@@ -1,0 +1,102 @@
+// https://dbdiagram.io 에 붙여 넣으면 ERD로 볼 수 있다. 실제 테이블은 backend/src/main/resources/db/migration/V1__create_tables.sql 이 만든다.
+
+Project coding_test {
+  database_type: 'MySQL'
+  Note: '픽셀 메타버스 모각코 + 코딩테스트 채점 (MVP)'
+}
+
+Table users {
+  id bigint [pk, increment]
+  google_subject varchar(255) [not null, unique, note: 'Google 계정 고유 ID(sub). 이메일 대신 이 값으로 식별']
+  email varchar(255) [not null]
+  nickname varchar(30) [not null, unique, note: '맵에서 아바타 이름으로 쓰여 중복 금지']
+  created_at datetime [not null]
+
+  Note: '로그인 회원. 게스트는 저장하지 않음(localStorage). Total Solved는 user_solved_problems COUNT로 계산'
+}
+
+Table problems {
+  id bigint [pk, note: 'seed 폴더 번호(1~5)를 그대로 사용']
+  title varchar(100) [not null]
+  level int [not null, note: '0~5 (CHECK)']
+  description text [not null, note: '마크다운 지문']
+  return_type varchar(30) [not null]
+  time_limit_ms int [not null, default: 3000]
+  memory_limit_mb int [not null, default: 265]
+}
+
+Table problem_parameters {
+  problem_id bigint [not null, ref: > problems.id]
+  position int [not null, note: 'solution 인자 순서 (1부터)']
+  name varchar(50) [not null]
+  type varchar(30) [not null, note: 'int, long, double, boolean, String, int[], long[], String[], int[][]']
+
+  indexes {
+    (problem_id, position) [pk]
+    (problem_id, name) [unique, note: '같은 문제에 같은 이름의 파라미터 금지']
+  }
+
+  Note: '키가 있는 객체(name, type)라 JSON이면 키가 계속 붙을 수 있고, 이름 중복·타입 제한을 DB가 검사하도록 테이블로 분리. 문제당 1~3행이라 비용이 거의 없음'
+}
+
+Table test_cases {
+  id bigint [pk, increment]
+  problem_id bigint [not null, ref: > problems.id]
+  sequence int [not null, note: '문제 안에서의 순서. 표시·실행 순서는 ORDER BY hidden, sequence (예제가 항상 먼저)']
+  hidden boolean [not null, note: 'false = 예제, true = 히든']
+  input json [not null, note: 'solution 인자 배열(하나의 값으로 취급), 예: [[1,2,3]]']
+  expected json [not null, note: '기대 반환값']
+
+  indexes {
+    (problem_id, sequence) [unique]
+    (problem_id, hidden, sequence) [note: '큰 JSON 행을 정렬하지 않고 인덱스 순서로 읽기 위함']
+  }
+}
+
+Table submissions {
+  id bigint [pk, increment]
+  user_id bigint [not null, ref: > users.id]
+  problem_id bigint [not null, ref: > problems.id]
+  language varchar(20) [not null, note: 'JAVA | JAVASCRIPT']
+  source_code mediumtext [not null, note: '애플리케이션에서 64KB 제한']
+  status varchar(20) [not null, note: 'PENDING -> JUDGING -> DONE | FAILED(시스템 오류)']
+  verdict varchar(3) [null, note: '[의도한 역정규화] 테스트 결과에서 계산 가능하지만 채점 후 불변 + CE는 테스트 결과가 없어 저장']
+  score decimal(4,1) [null, note: '[의도한 역정규화] 위와 같은 이유. 예: 66.7']
+  compile_log text [null, note: 'CE일 때만']
+  created_at datetime [not null, note: '접수 시각']
+  judged_at datetime [null, note: '채점 완료 시각']
+
+  indexes {
+    status [note: '서버 재시작 시 채점 중으로 남은 제출 복구용']
+    (user_id, problem_id)
+  }
+
+  Note: '[제출]만 저장, [코드 실행] 결과는 저장하지 않음. 전부 보관(삭제 정책은 용량을 보고 추후 결정). 제출 내역 화면은 MVP 제외'
+}
+
+Table submission_test_results {
+  submission_id bigint [not null, ref: > submissions.id]
+  test_case_id bigint [not null, ref: > test_cases.id, note: '입력·기댓값·히든 여부·순서는 여기서 조회']
+  verdict varchar(3) [not null]
+  time_ms int [not null]
+  memory_kb int [not null]
+  actual json [null, note: '실제 반환값, 히든이면 NULL']
+  user_output text [null, note: '히든이면 NULL, 앞 1KB만 저장']
+  error_message text [null, note: '히든이면 NULL, 앞 1KB만 저장']
+
+  indexes {
+    (submission_id, test_case_id) [pk, note: 'test_number 없음 - 순서는 test_cases.sequence']
+  }
+}
+
+Table user_solved_problems {
+  user_id bigint [not null, ref: > users.id]
+  problem_id bigint [not null, ref: > problems.id]
+  solved_at datetime [not null, note: '처음 AC를 받은 시각. 행 생성 시 한 번만 기록']
+
+  indexes {
+    (user_id, problem_id) [pk]
+  }
+
+  Note: '[의도한 역정규화] submissions에서 계산 가능하지만 [완료] 뱃지·Total Solved 조회용으로 별도 보관. first_submission_id 없음 - 제출 테이블과 중복'
+}
