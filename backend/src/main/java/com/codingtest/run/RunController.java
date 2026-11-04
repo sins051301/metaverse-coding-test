@@ -5,6 +5,7 @@ import com.codingtest.judge.JudgeMode;
 import com.codingtest.problem.Problem;
 import com.codingtest.problem.ProblemService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "코드 실행")
+@SecurityRequirement(name = "bearer")
 @RestController
 public class RunController {
 

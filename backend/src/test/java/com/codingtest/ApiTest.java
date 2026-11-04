@@ -1,7 +1,10 @@
 package com.codingtest;
 
+import com.codingtest.auth.TokenService;
 import com.codingtest.judge.Language;
 import com.codingtest.problem.ProblemService;
+import com.codingtest.user.UserService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Tag;
@@ -11,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
@@ -35,8 +39,22 @@ class ApiTest {
 	@Autowired
 	private ProblemService problemService;
 
+	@Autowired
+	private UserService userService;
+
+	@Autowired
+	private TokenService tokenService;
+
+	private String accessToken;
+
+	@BeforeEach
+	void logIn() {
+		accessToken = tokenService.issue(userService.findOrCreate("api-test-subject", "api-test@example.com").getId());
+	}
+
 	private MockMvcTester.MockMvcRequestBuilder run(long problemId, String language, String sourceCode) {
 		return mockMvc.post().uri("/api/problems/{problemId}/runs", problemId)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(JSON_MAPPER.writeValueAsString(Map.of("language", language, "sourceCode", sourceCode)));
 	}

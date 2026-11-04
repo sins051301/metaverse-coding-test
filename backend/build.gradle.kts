@@ -20,6 +20,9 @@ repositories {
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 	implementation("org.springframework.boot:spring-boot-starter-flyway")
+	implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
+	implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+	implementation("org.springframework.boot:spring-boot-starter-security")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("org.flywaydb:flyway-mysql")
@@ -34,6 +37,7 @@ dependencies {
 	testImplementation("org.springframework.boot:spring-boot-testcontainers")
 	testImplementation("org.testcontainers:testcontainers-junit-jupiter")
 	testImplementation("org.testcontainers:testcontainers-mysql")
+	testImplementation("org.springframework.boot:spring-boot-starter-security-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
 	testCompileOnly("org.projectlombok:lombok")
@@ -56,6 +60,13 @@ judgeImages.forEach { (taskSuffix, language) ->
 		commandLine("docker", "build", "-q", "-f", "$language.Dockerfile", "-t", "coding-test/judge-$language", ".")
 	}
 	buildJudgeImages { dependsOn(buildImage) }
+}
+
+// 비밀값은 환경 변수로만 받는다(공개 레포). 테스트는 실제 Google을 거치지 않으므로 가짜 값을 넣는다.
+tasks.withType<Test> {
+	environment("GOOGLE_CLIENT_ID", "test-client-id")
+	environment("GOOGLE_CLIENT_SECRET", "test-client-secret")
+	environment("JWT_SECRET", "test-jwt-secret-that-is-at-least-32-bytes-long")
 }
 
 tasks.test {
