@@ -33,6 +33,9 @@
 |---|---|
 | 사용자 식별 | 게스트로 시작(localStorage의 임시 UUID + `익명_XXXX` 닉네임). 메인 화면에서 직접 로그인도 가능 |
 | 로그인 요구 시점 | **[코드 실행]**(예제만 실행), **[제출 및 채점]**, **[1:1 페어 요청]** 시 Google OAuth 팝업 (Lazy Auth). 채점 서버를 쓰는 동작은 모두 로그인 필요 |
+| 로그인 방식 | Google 로그인 성공 → `users`를 Google 계정 ID(`sub`)로 찾거나 생성 → 우리 서버 JWT 발급. 토큰은 `Authorization: Bearer` 헤더(쿠키 아님: CSRF 대응 불필요, Swagger·STOMP에서 쓰기 쉬움). HS256 서명(서버 하나라 비밀키 하나로 충분). 액세스 토큰 24시간, 리프레시 토큰 없음(만료 시 재로그인, 보안 강화 때 도입). 로그인 과정의 세션은 Google state 검증에만 쓰고 바로 폐기 |
+| 첫 로그인 닉네임 | `사용자_XXXXXX` 자동 생성 (겹치면 다시 생성, Google 실명 노출 방지). 닉네임 변경 API는 나중에 |
+| 비밀값 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `JWT_SECRET`(32바이트 이상)은 환경 변수로만 받음. 공개 레포라 레포에 넣지 않으며, 없으면 서버가 시작하지 않음 |
 | 비로그인 허용 영역 | 맵 입장, 아바타 이동, 문제 지문 조회, 에디터에서 코드 작성해 보기 |
 | 채점 방식 | Docker 샌드박스 직접 구현 |
 | 풀이 지원 언어 | **Java, JavaScript** |
@@ -48,9 +51,10 @@
 | 시작 코드 | 서버가 문제 상세 응답에 언어별 `starterCode`로 제공 (래퍼 규칙과 한곳에서 관리, 모든 문제의 시작 코드가 채점기에서 실행되는지 테스트로 확인) |
 | API 확인 | Swagger UI (`/swagger-ui.html`). 운영 배포 때는 끔 |
 | 제출 API | 로그인(7단계)과 함께 만듦. 5단계는 문제 조회 + [코드 실행]만 |
+| 실행 기록 저장 | [코드 실행]도 저장 (`runs` + `run_test_results`). 제출 테이블에 `mode`로 합치지 않고 분리: 나중에 유저가 직접 추가한 테스트 입력으로 실행하는 기능을 넣으면 `test_cases`를 가리키지 않는 결과가 생기고, 합치면 제출 조회마다 `mode` 조건 누락 시 예제 AC가 푼 문제로 기록되는 버그 위험·실행 행이 대부분을 차지하는 문제가 있음 |
 | 개발 순서 | API보다 **DB 구조를 먼저** 설계 (비동기 채점 상태를 저장해야 해서 API 형태가 DB에 따라 정해짐) |
-| DB에 저장하는 것 | `users`, `problems`, `test_cases`, `user_solved_problems`(푼 문제, 별도 테이블), `submissions` + `submission_test_results`(제출·비동기 채점 상태. 새로고침·서버 재시작·채점 오류 조사 대응) |
-| DB에 저장하지 않는 것 | [코드 실행] 결과(바로 응답만), 게스트 정보(localStorage), 아바타 위치·상태·관전·페어 세션·Yjs 문서(서버 메모리 실시간), 페어 채팅(저장 안 함), 작성 중인 코드(일단 localStorage) |
+| DB에 저장하는 것 | `users`, `problems`, `test_cases`, `user_solved_problems`(푼 문제, 별도 테이블), `submissions` + `submission_test_results`(제출·비동기 채점 상태. 새로고침·서버 재시작·채점 오류 조사 대응), `runs` + `run_test_results`(실행 기록) |
+| DB에 저장하지 않는 것 | 게스트 정보(localStorage), 아바타 위치·상태·관전·페어 세션·Yjs 문서(서버 메모리 실시간), 페어 채팅(저장 안 함), 작성 중인 코드(일단 localStorage) |
 | 제출 내역 화면 | MVP 제외 (데이터는 저장) |
 | 파라미터 저장 | `problem_parameters` 테이블로 분리. 이름 중복·타입 제한을 DB가 검사하게 하려는 것 (문제당 1~3행이라 비용 거의 없음). 테스트 입력·정답은 통째로 쓰는 값이라 JSON 컬럼 유지 (판단 기준은 8장) |
 | 언어별 시간 | 같은 제한으로 시작, 검증용 정답 코드로 측정 후 필요하면 배수 도입 |
@@ -138,7 +142,7 @@ MVP 이후 공용 맵·관전 구조 위에 확장한다 (MVP 설계 변경 불�
 | QueryDSL | **MVP 제외** | MVP 조회는 고정 쿼리라 Spring Data JPA/JPQL로 충분. 동적 필터가 생기면 관리되는 `io.github.openfeign.querydsl` 포크로 도입 |
 | 실시간 | STOMP (Spring simple broker) | (예정) 아바타 위치·상태·이펙트·채점 결과 알림 브로드캐스트 |
 | 동시 편집 | Yjs + `y-monaco` | (예정) 병합은 클라이언트 CRDT가 하고 서버는 중계만. 중계 위치(Spring 릴레이 vs Node `y-websocket`)는 페어 기능 구현 때 결정 |
-| 인증 | Spring Security OAuth2 Client + 내장 Nimbus JWT | (예정) 별도 JWT 라이브러리 없이 발급·검증 |
+| 인증 | **Spring Security 7** OAuth2 Client(Google 로그인) + OAuth2 Resource Server(JWT 검증, 내장 Nimbus) | 별도 JWT 라이브러리(jjwt) 없이 발급·검증 |
 | 채점 | **Docker + docker-java 3.7.1** | 제출마다 격리 컨테이너 생성. CLI 호출보다 종료 코드·OOM 등을 구조화된 값으로 받을 수 있다 |
 | API 문서 | **springdoc-openapi 3.2.0** (Swagger UI) | 컨트롤러에서 API 문서가 자동으로 만들어지고 브라우저에서 바로 요청을 보내 볼 수 있음. Spring Boot 4.1.2 기준 빌드 |
 | 테스트 | JUnit 5, AssertJ, **Testcontainers 2** | 샌드박스와 DB는 실제 Docker 컨테이너를 띄우는 통합 테스트(`judgeTest`) |
@@ -156,6 +160,8 @@ coding-test/
 ├─ docs/erd.dbml                 ERD (dbdiagram.io에 붙여 넣어 보기)
 ├─ backend/                      Spring Boot (Gradle Kotlin DSL)
 │  ├─ src/main/java/com/codingtest/
+│  │  ├─ auth/                   보안 설정, Google 로그인 성공 처리, JWT 발급(TokenService)
+│  │  ├─ user/                   회원 엔티티, 내 정보 API
 │  │  ├─ judge/                  채점 샌드박스 실행(SandboxRunner) + 판정기(Judge)
 │  │  ├─ problem/                문제 엔티티(Problem, ProblemParameter, TestCase), Repository, 문제 조회 API, 시작 코드(StarterCode)
 │  │  └─ run/                    [코드 실행] API
@@ -183,8 +189,20 @@ cd backend
 ./gradlew test          # 일반 테스트 (Docker 불필요)
 ./gradlew judgeTest     # 채점 이미지 빌드 + 실제 컨테이너로 샌드박스·DB 테스트 (MySQL은 Testcontainers가 따로 띄움)
 ./gradlew buildJudgeImages   # 채점 이미지만 빌드
-./gradlew bootRun       # 서버 실행 (시작할 때 Flyway가 테이블과 seed 문제를 만듦)
+./gradlew bootRun       # 서버 실행 (시작할 때 Flyway가 테이블과 seed 문제를 만듦, 아래 환경 변수 필요)
 ```
+
+`bootRun` 전에 비밀값 세 개를 `backend/.env`(git 제외 대상)에 적는다. 환경 변수로 넣어도 된다. 테스트는 Gradle이 가짜 값을 넣어 줘서 필요 없다.
+
+```
+GOOGLE_CLIENT_ID=...        # Google Cloud Console에서 만든 OAuth 클라이언트
+GOOGLE_CLIENT_SECRET=...
+JWT_SECRET=...              # 32바이트 이상 아무 값 (예: openssl rand -base64 48)
+```
+
+Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:8080/login/oauth2/code/google`.
+
+토큰 받기: 브라우저에서 http://localhost:8080/oauth2/authorization/google → Google 로그인 → `{"accessToken": "..."}` 화면의 값을 복사 → Swagger 오른쪽 위 **Authorize**에 붙여 넣기.
 
 서버를 켠 뒤 http://localhost:8080/swagger-ui.html 에서 API를 확인한다.
 
@@ -192,10 +210,12 @@ cd backend
 |---|---|---|
 | GET | `/api/problems` | 문제 목록 (`id`, `title`, `level`) |
 | GET | `/api/problems/{id}` | 문제 상세 (지문, 파라미터, 반환 타입, 시간·메모리 제한, 언어별 `starterCode`) |
-| POST | `/api/problems/{id}/runs` | [코드 실행] `{"language": "JAVA", "sourceCode": "..."}` → 예제만 채점, 저장 안 함 |
+| POST | `/api/problems/{id}/runs` | [코드 실행] `{"language": "JAVA", "sourceCode": "..."}` → 예제만 채점. **로그인 필요** (저장은 6단계 다음 작업) |
+| GET | `/api/users/me` | 내 정보 (`id`, `nickname`, `email`). 토큰 확인용. **로그인 필요** |
+| GET | `/oauth2/authorization/google` | Google 로그인 시작 → 성공하면 `{"accessToken": "..."}` |
 
-에러는 표준 형식(RFC 9457 `ProblemDetail`): 없는 문제 404, 빈 코드·64K자 초과·지원하지 않는 언어 400.
-아직 동시 실행 수 제한이 없어 요청마다 바로 컨테이너를 띄운다 (6단계에서 대기열 추가).
+에러는 표준 형식(RFC 9457 `ProblemDetail`): 없는 문제 404, 빈 코드·64K자 초과·지원하지 않는 언어 400. 로그인이 필요한 API에 토큰이 없거나 틀리면 401 (Google 로그인 화면으로 보내지 않음).
+아직 동시 실행 수 제한이 없어 요청마다 바로 컨테이너를 띄운다 (7단계에서 대기열 추가).
 
 ---
 
@@ -275,7 +295,7 @@ cd backend
 ### 부하 대응 (나중에 적용)
 | 시점 | 방법 |
 |---|---|
-| MVP | 대기열 + 동시 컨테이너 수 제한(세마포어), 유저별 제출 빈도 제한 |
+| MVP (7단계) | 대기열 + 동시 컨테이너 수 제한(세마포어), 유저별 제출 빈도 제한 |
 | (보류) | 첫 실패에서 중단: 프로그래머스식 전체 실행과 맞지 않아 제거함. 무한 루프 제출은 "시간 제한 × 테스트 수"만큼 걸린다 |
 | 사용자 증가 | 컨테이너 미리 띄워두기(pre-warm, 1회용), JVM CDS/AOT 캐시, 같은 코드 결과 캐시 |
 | 컴파일 단축 (측정 완료, 미적용) | `javac`에 `-J-XX:TieredStopAtLevel=1`(C1 JIT만 사용): 1코어에서 3.2초 → 1.5초. 래퍼를 이미지 빌드 시 미리 컴파일: 약 1초 추가 단축 예상. 유저 코드 실행에도 C1만 쓰는 안은 3초 이하 실행에서 같거나 더 빨랐음(1회 측정) → 반복 측정 후 결정 |
@@ -299,8 +319,11 @@ ERD: [`docs/erd.dbml`](docs/erd.dbml) (dbdiagram.io에 붙여 넣어 보기). �
 | `submissions` | [제출] 기록: 코드, 언어, 상태(`PENDING`→`JUDGING`→`DONE`/`FAILED`), 판정, 점수, 컴파일 로그 | `id` |
 | `submission_test_results` | 제출별 테스트 판정·시간·메모리. 예제만 반환값·출력·에러(앞 1KB) 저장 | (`submission_id`, `test_case_id`) |
 | `user_solved_problems` | 푼 문제 (`solved_at` = 처음 AC 시각). `[완료]` 뱃지, Total Solved(`COUNT`) | (`user_id`, `problem_id`) |
+| `runs` | [코드 실행] 기록: 코드, 언어, 상태, 판정, 컴파일 로그. `score` 없음 (예제 3~4개 통과 수라 결과 행에서 바로 셈) | `id` |
+| `run_test_results` | 실행별 예제 결과. 예제는 공개라 반환값·출력·에러(앞 1KB) 항상 저장 | (`run_id`, `test_case_id`) |
+| (나중) `run_custom_test_results` | 유저가 직접 추가한 테스트 입력의 결과. `input`·`expected`를 직접 가짐. `run_test_results`와 합치면 "`test_case_id`와 `input` 중 하나만" 같은 조건부 규칙이 생겨 분리 | (`run_id`, `position`) |
 
-관계: `users` 1:N `submissions` 1:N `submission_test_results` N:1 `test_cases` N:1 `problems`, `problems` 1:N `problem_parameters`, `users` N:M `problems` (`user_solved_problems`).
+관계: `users` 1:N `submissions` 1:N `submission_test_results` N:1 `test_cases` N:1 `problems`, `problems` 1:N `problem_parameters`, `users` N:M `problems` (`user_solved_problems`), `users` 1:N `runs` 1:N `run_test_results` N:1 `test_cases`.
 
 ### 설계 판단
 | 항목 | 결정 |
@@ -326,12 +349,14 @@ JPA 매핑은 `JsonNodeConverter`로 문자열 ↔ `JsonNode` 변환 (Hibernate 
 ### DB가 검사할 규칙 (V1의 UNIQUE·CHECK 제약, `SchemaConstraintsTest`로 확인)
 - `submissions`: `status = DONE`이면 `verdict`·`score`·`judged_at` NOT NULL, 그 외 상태면 셋 다 NULL
 - `submissions`: `verdict = CE` ⇔ `compile_log` NOT NULL
+- `runs`: `status = DONE`이면 `verdict`·`judged_at` NOT NULL, 그 외 상태면 둘 다 NULL. `verdict = CE` ⇔ `compile_log` NOT NULL (7단계에서 마이그레이션 추가)
 - 코드값 목록: `language`(JAVA, JAVASCRIPT), `status`, `verdict`(AC, WA, TLE, MLE, RE, CE), 파라미터 `type`·`return_type`(지원 타입 9개)
 - 범위: `time_limit_ms > 0`, `memory_limit_mb >= 128`, `level` 0~5, `score` 0~100
 
 ### 애플리케이션 코드 + 테스트로 지킬 규칙 (다른 테이블·행을 봐야 해서 CHECK 불가)
 - 제출의 테스트 결과는 같은 문제의 테스트 케이스만 가리킨다
 - 히든 테스트 결과는 `actual`·`user_output`·`error_message`를 비운다
+- 실행 결과는 같은 문제의 예제(`hidden = false`)만 가리킨다
 - 테스트 입력의 인자 개수 = `problem_parameters` 행 수 (`ProblemRepositoryTest`)
 - `problem_parameters.position`은 1부터 빈틈없이 이어진다 (`ProblemRepositoryTest`)
 - `user_solved_problems`는 제출을 `DONE` + AC로 바꾸는 같은 트랜잭션에서 기록한다 (이미 있으면 무시)
@@ -351,5 +376,6 @@ JPA 매핑은 `JsonNodeConverter`로 문자열 ↔ `JsonNode` 변환 (Hibernate 
 | 3 | DB 구조 설계 (ERD, 8장) + 기술 선택 (JPA, Docker Compose, Testcontainers, Flyway) | 완료 |
 | 4 | MySQL + Flyway(V1 테이블·제약, V2 seed 문제), 문제 엔티티·Repository, `Judge`가 DB 문제로 채점 | 완료 |
 | 5 | API: 문제 목록·상세(시작 코드 포함), 코드 실행 + Swagger UI | 완료 |
-| 6 | 비동기 채점 + 대기열(동시 채점 수 제한) + Docker 호출 시간 제한 + 결과 전달(조회 API 또는 STOMP 푸시) | 예정 |
-| 7 | Google OAuth + JWT, 제출 API(`submissions` 저장·조회), `user_solved_problems`/Total Solved | 예정 |
+| 6 | **Google OAuth + JWT (완료)**, 제출 API(`submissions` 저장·조회) + 실행 기록 저장(`runs`) + 비동기 채점 + 결과 전달(조회 API 또는 STOMP 푸시), `user_solved_problems`/Total Solved, 동시 제출 JUnit 테스트(대기열 없는 상태의 기준 측정) | 진행 중 |
+| 7 | 대기열(동시 채점 수 제한) + Docker 호출 시간 제한, 동시 제출 테스트로 6단계 측정값과 비교 (배포 전 필수) | 예정 |
+| 8 | 부하 테스트 도구(k6 등, 사전 검토 후) 도입: 실제 서버에 가상 유저로 응답 시간 분포 측정 (배포 전) | 예정 |
