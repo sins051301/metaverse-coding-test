@@ -100,3 +100,47 @@ Table user_solved_problems {
 
   Note: '[의도한 역정규화] submissions에서 계산 가능하지만 [완료] 뱃지·Total Solved 조회용으로 별도 보관. first_submission_id 없음 - 제출 테이블과 중복'
 }
+
+Table runs {
+  id bigint [pk, increment]
+  user_id bigint [not null, ref: > users.id]
+  problem_id bigint [not null, ref: > problems.id]
+  language varchar(20) [not null, note: 'JAVA | JAVASCRIPT']
+  source_code mediumtext [not null, note: '애플리케이션에서 64KB 제한']
+  status varchar(20) [not null, note: 'PENDING -> JUDGING -> DONE | FAILED(시스템 오류)']
+  verdict varchar(3) [null, note: 'CE는 테스트 결과가 없어 저장']
+  compile_log text [null, note: 'CE일 때만']
+  created_at datetime [not null]
+  judged_at datetime [null]
+
+  indexes {
+    (user_id, problem_id)
+  }
+
+  Note: '[코드 실행] 기록. submissions와 분리: 유저가 추가한 테스트 입력(나중)은 test_cases를 가리키지 않고, 합치면 제출 조회마다 mode 조건이 필요. score 없음 - 예제 결과 행에서 바로 계산'
+}
+
+Table run_test_results {
+  run_id bigint [not null, ref: > runs.id]
+  test_case_id bigint [not null, ref: > test_cases.id, note: '예제(hidden = false)만. 입력·기댓값·순서는 여기서 조회']
+  verdict varchar(3) [not null]
+  time_ms int [not null]
+  memory_kb int [not null]
+  actual json [null, note: '정상 종료했을 때의 반환값']
+  user_output text [null, note: '앞 1KB만 저장']
+  error_message text [null, note: '앞 1KB만 저장']
+
+  indexes {
+    (run_id, test_case_id) [pk]
+  }
+}
+
+// 나중: 유저가 직접 추가한 테스트 입력의 결과
+// Table run_custom_test_results {
+//   run_id bigint [not null, ref: > runs.id]
+//   position int [not null]
+//   input json [not null]
+//   expected json [not null]
+//   verdict, time_ms, memory_kb, actual, user_output, error_message
+//   indexes { (run_id, position) [pk] }
+// }
