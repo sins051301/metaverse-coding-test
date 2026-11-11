@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import tools.jackson.databind.JsonNode;
 
@@ -34,6 +35,7 @@ class JudgeApiTest {
 
 	private static final String ACCEPTED_JAVASCRIPT = "function solution(numbers) { return numbers.filter((number) => number % 2 === 0).length; }";
 	private static final String WRONG_JAVASCRIPT = "function solution(numbers) { return numbers.length; }";
+	private static final String ACCEPTED_JAVA = "class Solution { int solution(int[] numbers) { int count = 0; for (int number : numbers) if (number % 2 == 0) count++; return count; } }";
 
 	@Autowired
 	private MockMvcTester mockMvc;
@@ -46,6 +48,9 @@ class JudgeApiTest {
 
 	@Autowired
 	private ProblemService problemService;
+
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
 
 	private JudgeApiClient newUser() {
 		return new JudgeApiClient(mockMvc, userService, tokenService, "judge-api-test-" + UUID.randomUUID());
@@ -138,6 +143,38 @@ class JudgeApiTest {
 		assertThat(user.post("submissions", 999, "JAVA", "class Solution {}")).hasStatus(HttpStatus.NOT_FOUND);
 		assertThat(user.post("runs", 1, "JAVA", " ")).hasStatus(HttpStatus.BAD_REQUEST);
 		assertThat(user.post("runs", 1, "PYTHON", "def solution(numbers): return 0")).hasStatus(HttpStatus.BAD_REQUEST);
+	}
+
+	@Test
+	@DisplayName("끝나지 않은 제출·실행이 이미 2건이면 3번째는 429 로 거절하고, 앞의 것이 끝나면 다시 받는다")
+	void limitsUnfinishedJudgingPerUser() {
+		JudgeApiClient user = newUser();
+		// Java 는 javac 때문에 5초 안팎이 걸려서, 아래 세 번째 요청을 보낼 때까지 앞의 두 건이 끝나지 않는다.
+		long submissionId = user.accept("submissions", 1, "JAVA", ACCEPTED_JAVA);
+		long runId = user.accept("runs", 1, "JAVA", ACCEPTED_JAVA);
+
+		assertThat(user.post("submissions", 1, "JAVASCRIPT", ACCEPTED_JAVASCRIPT)).hasStatus(HttpStatus.TOO_MANY_REQUESTS);
+
+		user.awaitDone("submissions", submissionId);
+		user.awaitDone("runs", runId);
+		user.awaitDone("runs", user.accept("runs", 1, "JAVASCRIPT", ACCEPTED_JAVASCRIPT));
+	}
+
+	@Test
+	@DisplayName("전체 대기가 상한(50건)만큼 쌓이면 처음 제출하는 유저도 429 로 거절한다")
+	void rejectsWhenQueueIsFull() {
+		JudgeApiClient filler = newUser();
+		long fillerId = filler.me().path("id").asLong();
+		// 채점 이벤트 없이 DB 에 PENDING 만 넣는다. 작업자가 집어 가지 않으므로 끝나지 않은 채로 남는다.
+		for (int index = 0; index < 50; index++) {
+			jdbcTemplate.update("INSERT INTO runs (user_id, problem_id, language, source_code, status, created_at) "
+					+ "VALUES (?, 1, 'JAVASCRIPT', ?, 'PENDING', UTC_TIMESTAMP())", fillerId, ACCEPTED_JAVASCRIPT);
+		}
+		try {
+			assertThat(newUser().post("submissions", 1, "JAVASCRIPT", ACCEPTED_JAVASCRIPT)).hasStatus(HttpStatus.TOO_MANY_REQUESTS);
+		} finally {
+			jdbcTemplate.update("DELETE FROM runs WHERE user_id = ?", fillerId);
+		}
 	}
 
 	@TestFactory

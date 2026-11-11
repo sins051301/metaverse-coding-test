@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
@@ -26,8 +27,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 여러 유저가 거의 동시에 제출할 때, 모두 정상 판정되는지와 시간이 얼마나 늘어나는지 본다.
  *
- * <p>지금은 대기열이 없어서 제출 수만큼 채점 컨테이너가 한꺼번에 뜬다 (컨테이너 하나 최대 265MB).
- * 이 테스트의 결과(시간)가 대기열을 넣기 전의 기준값이고, 7단계에서 대기열을 넣은 뒤 같은 테스트로 비교한다.
+ * <p>6단계(제한 없음)에서는 제출 수만큼 채점 컨테이너가 한꺼번에 떴다 (컨테이너 하나 최대 265MB). 그때 결과가 기준값이고,
+ * 7단계에서 동시 채점 수 제한(judge.concurrency)을 넣은 뒤 같은 테스트로 비교한다 (README 7장).
+ * 동시 채점 수를 바꿔 재려면: ./gradlew concurrencyTest -PjudgeConcurrency=2
  * 무거워서 judgeTest 에서는 빠지고 ./gradlew concurrencyTest 로 따로 돌린다.
  */
 @Tag("concurrency")
@@ -61,6 +63,9 @@ class ConcurrentSubmissionTest {
 	@Autowired
 	private TokenService tokenService;
 
+	@Value("${judge.concurrency}")
+	private int judgeConcurrency;
+
 	@Test
 	@DisplayName("제출 10건(Java 5, JavaScript 5)을 동시에 보내면 모두 AC 로 끝난다 (걸린 시간을 출력)")
 	void judgesConcurrentSubmissions() throws Exception {
@@ -91,8 +96,8 @@ class ConcurrentSubmissionTest {
 				.map(result -> Duration.between(Instant.parse(result.path("createdAt").asString()), Instant.parse(result.path("judgedAt").asString())).toMillis())
 				.sorted()
 				.toList();
-		System.out.printf("[동시 제출 %d건] 전체 %.1f초, 건별(접수→채점 완료) 최소 %.1f초 / 중간 %.1f초 / 최대 %.1f초%n",
-				SUBMISSION_COUNT, total.toMillis() / 1000.0,
+		System.out.printf("[동시 제출 %d건, 동시 채점 수 %d] 전체 %.1f초, 건별(접수→채점 완료) 최소 %.1f초 / 중간 %.1f초 / 최대 %.1f초%n",
+				SUBMISSION_COUNT, judgeConcurrency, total.toMillis() / 1000.0,
 				judgeMillis.getFirst() / 1000.0, judgeMillis.get(judgeMillis.size() / 2) / 1000.0, judgeMillis.getLast() / 1000.0);
 	}
 

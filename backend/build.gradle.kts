@@ -101,5 +101,7 @@ tasks.register<Test>("concurrencyTest") {
 	testLogging {
 		showStandardStreams = true
 	}
+	// -PjudgeConcurrency=N 으로 동시 채점 수를 바꿔 같은 테스트를 비교한다. 없으면 application.properties 값.
+	providers.gradleProperty("judgeConcurrency").orNull?.let { systemProperty("judge.concurrency", it) }
 	dependsOn(buildJudgeImages)
 }
