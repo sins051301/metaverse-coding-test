@@ -147,12 +147,14 @@ MVP 이후 공용 맵·관전 구조 위에 확장한다 (MVP 설계 변경 불�
 | QueryDSL | **MVP 제외** | MVP 조회는 고정 쿼리라 Spring Data JPA/JPQL로 충분. 동적 필터가 생기면 관리되는 `io.github.openfeign.querydsl` 포크로 도입 |
 | 실시간 | STOMP (Spring simple broker) | (예정) 아바타 위치·상태·이펙트·채점 결과 알림 브로드캐스트 |
 | 동시 편집 | Yjs + `y-monaco` | (예정) 병합은 클라이언트 CRDT가 하고 서버는 중계만. 중계 위치(Spring 릴레이 vs Node `y-websocket`)는 페어 기능 구현 때 결정 |
-| 인증 | **Spring Security 7** OAuth2 Client(Google 로그인) + OAuth2 Resource Server(JWT 검증, 내장 Nimbus) | 별도 JWT 라이브러리(jjwt) 없이 발급·검증 |
+| 인증 | **Spring Security 7** OAuth2 Client(Google 로그인) + OAuth2 Resource Server(JWT 검증, 내장 Nimbus) | 별도 JWT 라이브러리(jjwt) 없이 발급·검증. 토큰은 **HttpOnly 쿠키**(`SameSite=Lax`)로 심어 프론트 자바스크립트가 읽지 못하게 함(XSS로 토큰 탈취 불가). 서버는 `Authorization` 헤더를 먼저, 없으면 쿠키를 읽음(`BearerTokenResolver`). CSRF는 `SameSite=Lax`가 다른 사이트의 POST에 쿠키를 붙이지 않는 것으로 막음 |
 | 채점 | **Docker + docker-java 3.7.1** | 제출마다 격리 컨테이너 생성. CLI 호출보다 종료 코드·OOM 등을 구조화된 값으로 받을 수 있다 |
 | API 문서 | **springdoc-openapi 3.2.0** (Swagger UI) | 컨트롤러에서 API 문서가 자동으로 만들어지고 브라우저에서 바로 요청을 보내 볼 수 있음. Spring Boot 4.1.2 기준 빌드 |
 | 테스트 | JUnit 5, AssertJ, **Testcontainers 2** | 샌드박스와 DB는 실제 Docker 컨테이너를 띄우는 통합 테스트(`judgeTest`) |
 | 기타 | Lombok(JPA 엔티티 한정), DTO는 `record` | |
 | 프론트엔드 | React, Phaser.js, Monaco Editor | (예정) 맵은 2D 탑다운이라 타일맵·충돌·입력이 내장된 Phaser 추천(3D·PixiJS 비교는 `docs/ui-design.md` 5장). 버전·React 연결 방식은 구현 전 검토 |
+| 프론트 기반 | **Vite 8 + React 19 + TypeScript 7**, pnpm, CSS Modules + CSS 변수 토큰, oxlint + Prettier, FSD | CRA는 지원 종료, Next.js의 SSR은 Phaser·Monaco처럼 브라우저 전용 앱에 이득이 없음. 디자인 토큰이 이미 CSS 변수라 Tailwind 없이 그대로 옮김. 코드 규칙은 `.claude/skills/react-best-practices`(Vercel, Next.js 전용 `server-` 규칙 제외). barrel 파일(`index.ts` 재수출)은 두지 않고 FSD 슬라이스도 파일을 직접 경로로 import |
+| 풀이 화면 | **@monaco-editor/react + monaco-editor**(CDN 대신 설치한 패키지, `React.lazy`로 늦게 로드), react-markdown + remark-gfm, react-resizable-panels, **TanStack Query**, React Router | 실행·제출은 접수(202) 후 결과를 1초마다 폴링 → TanStack Query `refetchInterval`이 `DONE`·`FAILED`에서 멈춤. 코드는 React 상태에 두지 않고 실행·제출 순간에만 에디터에서 읽어 타이핑 중 재렌더가 없음. 작성 중 코드는 문제·언어별로 localStorage |
 
 ---
 
@@ -174,7 +176,8 @@ coding-test/
 │  │  └─ run/                    [코드 실행] API, 엔티티, 작업 스레드 채점(RunJudgeWorker)
 │  ├─ src/main/resources/db/migration/   Flyway: V1 테이블 생성, V2 seed 문제 5개
 │  └─ src/test/resources/problems/{id}-{slug}/   검증용 코드: accepted(AC) / wrong(WA) / slow(TLE) .java .js
-├─ frontend/                     React (예정)
+├─ frontend/                     React + Vite (dev 서버 3000, /api → 8080 프록시)
+│  └─ src/                       FSD: app(진입점·전역 스타일·테마 토큰) / pages / widgets / features / entities / shared
 └─ docker/
    └─ judge/                     채점 이미지
       ├─ java.Dockerfile         → coding-test/judge-java       (eclipse-temurin:25-jdk-noble)
@@ -210,7 +213,9 @@ JWT_SECRET=...              # 32바이트 이상 아무 값 (예: openssl rand -
 
 Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:8080/login/oauth2/code/google`.
 
-토큰 받기: 브라우저에서 http://localhost:8080/oauth2/authorization/google → Google 로그인 → `{"accessToken": "..."}` 화면의 값을 복사 → Swagger 오른쪽 위 **Authorize**에 붙여 넣기.
+로그인: 프론트(http://localhost:3000)의 [로그인] 또는 http://localhost:8080/oauth2/authorization/google → Google 로그인 → 백엔드가 `accessToken` HttpOnly 쿠키를 심고 `http://localhost:3000/login/callback`으로 보냄 → 로그인 전 보던 문제로 돌아감. 쿠키는 포트를 가리지 않아 같은 브라우저의 Swagger(8080)에서도 그대로 인증된다. 쿠키 없이 테스트할 때는 Swagger **Authorize**에 토큰을 넣는다(헤더가 쿠키보다 먼저).
+
+설정: `FRONTEND_URL`(기본 `http://localhost:3000`), `COOKIE_SECURE`(기본 `false`, 배포 HTTPS에서는 `true`).
 
 서버를 켠 뒤 http://localhost:8080/swagger-ui.html 에서 API를 확인한다.
 
@@ -222,12 +227,13 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 | GET | `/api/runs/{id}` | 실행 결과 (상태, 판정, 통과 수, 예제별 입력·기댓값·반환값·출력). `status`가 `DONE`이 될 때까지 다시 부른다. 본인 것만 |
 | POST | `/api/problems/{id}/submissions` | [제출] 예제 + 히든 전부 채점. 접수만 하고 `202`. **로그인 필요** |
 | GET | `/api/submissions/{id}` | 제출 결과 (상태, 판정, 점수, 테스트별 결과. 히든은 판정·시간·메모리만). 본인 것만 (남의 것은 404) |
+| GET | `/api/problems/{id}/submissions?page=0&size=20` | 이 문제에 낸 내 제출 내역, 최신순 (`id`, `language`, `status`, `verdict`, `score`, `createdAt`, `judgedAt`). 소스 코드·테스트별 결과는 빠짐. `hasNext`가 `true`면 `page+1`. `size`는 1~50. **로그인 필요** |
 | GET | `/api/users/me` | 내 정보 (`id`, `nickname`, `email`, `totalSolved`). **로그인 필요** |
-| GET | `/oauth2/authorization/google` | Google 로그인 시작 → 성공하면 `{"accessToken": "..."}` |
+| GET | `/oauth2/authorization/google` | Google 로그인 시작 → 성공하면 `accessToken` HttpOnly 쿠키를 심고 프론트 `/login/callback`으로 리다이렉트 |
+| POST | `/api/auth/logout` | 로그아웃. 만료된 쿠키로 덮어써 지운다(HttpOnly라 프론트가 직접 못 지움). `204` |
 
 에러는 표준 형식(RFC 9457 `ProblemDetail`): 없는 문제 404, 빈 코드·64K자 초과·지원하지 않는 언어 400. 로그인이 필요한 API에 토큰이 없거나 틀리면 401 (Google 로그인 화면으로 보내지 않음).
 채점이 밀리면 429: 내 끝나지 않은 제출·실행이 이미 2건이거나, 전체 대기가 50건일 때. 동시에 채점하는 수는 4건으로 제한하고 나머지는 `PENDING`으로 차례를 기다린다. 비동기 채점의 동작은 7장 "비동기 채점", 제한의 동작과 이유는 7장 "부하 제한".
-| GET | `/api/problems/{id}/submissions?page=0&size=20` | 이 문제에 낸 내 제출 내역, 최신순 (`id`, `language`, `status`, `verdict`, `score`, `createdAt`, `judgedAt`). 소스 코드·테스트별 결과는 빠짐. `hasNext`가 `true`면 `page+1`. `size`는 1~50. **로그인 필요** |
 
 ---
 
@@ -444,12 +450,6 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
   - 연결 시간 제한(`connectionTimeout`)은 테스트하지 않았다. "연결을 받지도 거절하지도 않는 주소"를 만들어야 하는데, 존재하지 않는 IP로 보내면 네트워크 환경에 따라 바로 거절되기도 해서 결과가 PC마다 달라진다.
   - `ATTACH_TIMEOUT`도 따로 테스트하지 않았다. 가짜 서버에서는 attach 요청이 응답 시간 제한에 먼저 걸린다.
 
-| 컴파일 단축 (측정 완료, 미적용) | `javac`에 `-J-XX:TieredStopAtLevel=1`(C1 JIT만 사용): 1코어에서 3.2초 → 1.5초. 래퍼를 이미지 빌드 시 미리 컴파일: 약 1초 추가 단축 예상. 유저 코드 실행에도 C1만 쓰는 안은 3초 이하 실행에서 같거나 더 빨랐음(1회 측정) → 반복 측정 후 결정 |
-| 서버 1대 초과 | 채점 워커 분리 + 메시지 큐(Redis Streams/RabbitMQ) + 오토스케일 |
-| 내 전체 제출 목록을 만들 때 (문제별 내역은 만듦, 위 "제출 내역") | `submissions`에 (`user_id`, `created_at`) 인덱스(전체 내역 최신순), 요약 컬럼 `max_time_ms`·`max_memory_kb`(목록에서 테스트 결과 집계 생략, 기존 데이터는 보관된 테스트 결과로 채움) |
-
----
-
 ### 제출 내역 (`GET /api/problems/{id}/submissions`)
 
 **흐름**: 프론트가 문제 화면의 [제출 내역] 탭을 열면 `?page=0&size=20` 호출 → 최신 20건과 `hasNext` 응답 → `hasNext`가 `true`면 [더 보기]로 `page=1` 호출 → 한 줄을 누르면 기존 `GET /api/submissions/{id}`로 코드·테스트별 결과를 본다.
@@ -500,6 +500,12 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 | MVP (7단계, 적용함) | 동시 채점 수 제한(세마포어) + 접수 제한(대기열 상한, 유저별 진행 중 개수) + Docker 호출 시간 제한. 위 "부하 제한" |
 | (보류) | 첫 실패에서 중단: 프로그래머스식 전체 실행과 맞지 않아 제거함. 무한 루프 제출은 "시간 제한 × 테스트 수"만큼 걸린다 |
 | 사용자 증가 | 컨테이너 미리 띄워두기(pre-warm, 1회용), JVM CDS/AOT 캐시, 같은 코드 결과 캐시 |
+| 컴파일 단축 (측정 완료, 미적용) | `javac`에 `-J-XX:TieredStopAtLevel=1`(C1 JIT만 사용): 1코어에서 3.2초 → 1.5초. 래퍼를 이미지 빌드 시 미리 컴파일: 약 1초 추가 단축 예상. 유저 코드 실행에도 C1만 쓰는 안은 3초 이하 실행에서 같거나 더 빨랐음(1회 측정) → 반복 측정 후 결정 |
+| 서버 1대 초과 | 채점 워커 분리 + 메시지 큐(Redis Streams/RabbitMQ) + 오토스케일 |
+| 내 전체 제출 목록을 만들 때 (문제별 내역은 만듦, 위 "제출 내역") | `submissions`에 (`user_id`, `created_at`) 인덱스(전체 내역 최신순), 요약 컬럼 `max_time_ms`·`max_memory_kb`(목록에서 테스트 결과 집계 생략, 기존 데이터는 보관된 테스트 결과로 채움) |
+
+---
+
 ## 8. DB 설계 (MySQL, Flyway로 생성)
 
 ERD: [`docs/erd.dbml`](docs/erd.dbml) (dbdiagram.io에 붙여 넣어 보기). 실제 테이블: `backend/src/main/resources/db/migration/V1__create_tables.sql`.

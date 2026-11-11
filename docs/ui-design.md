@@ -5,7 +5,9 @@
 ## 1. 화면 목록과 이동 흐름
 
 ```
-라운지(전체 맵) ──[F] 빈 책상──▶ 풀이(분할 화면) ──[ESC] 일어나기──▶ 라운지
+라운지(전체 맵) ──[F] 빈 책상(노트북 켜기)──▶ 문제 선택 ──문제 클릭──▶ 풀이(분할 화면) ──[ESC] 일어나기──▶ 라운지
+                                                    ▲                        │
+                                                    └──── [← 문제 목록] ───────┘
       │                               │
       ├─[F] 남의 책상 / [관전]──▶ 관전(읽기 전용)
       └─[F] 페어 요청 → 주인 수락──▶ 페어(동시 편집 + 채팅)
@@ -16,7 +18,8 @@
 | 화면 | 구성 | 데이터 |
 |---|---|---|
 | 라운지 | 상단 바(로고, 접속자 수, 닉네임·게스트 표시·[로그인]) + 전체 맵. 빈 책상 근처에서 `[F] 책상에 앉기` 툴팁, 벽 위 전광판에 다른 사람의 SOLVED 자막 | 아바타 위치·상태는 STOMP |
-| 풀이 | 프로그래머스 배치. `[맵 패널 280px ⇄ 활동 띠 48px]` 오른쪽에 문제 바(제목, 난이도, `다른 문제` 버튼, 언어 선택) → `[지문 380px, 탭 없음] [에디터 / 아래 실행·채점 결과 260px]` → 하단 액션 바(`일어나기` … `초기화` `코드 실행` `제출 후 채점하기`) | 아래 표 |
+| 문제 선택 (`/problems`) | 노트북 화면처럼 에디터와 같은 가장 깊은 차콜 타일에 문제 목록(번호, 제목, `Lv. n`). 위에 난이도 칩(전체 / Lv. n). 행을 누르면 풀이로. 라운지가 생기기 전까지는 `/`도 여기로 (2026-11-11 사용자 결정) | `GET /api/problems` |
+| 풀이 | 프로그래머스 배치. `[맵 패널 280px ⇄ 활동 띠 48px]` 오른쪽에 문제 바(`← 문제 목록`, 제목, 난이도, `제출 내역` 버튼, 언어 선택) → `[지문 380px, 탭 없음] [에디터 / 아래 실행·채점 결과 260px]` → 하단 액션 바(`일어나기` … `초기화` `코드 실행` `제출 후 채점하기`) | 아래 표 |
 | 관전 | 풀이와 같은 배치. 상단 배너 `OO님의 코드를 관전 중`, 언어 선택·실행·제출 숨김, 배너에 [페어 요청] | Yjs 문서 읽기 |
 | 페어 | 풀이 배치 + 오른쪽 채팅 260px. 상대 커서·이름표·선택 영역 표시. 제출은 주인만(파트너 화면에서는 비활성) | Yjs + `y-monaco`, 채팅은 저장 안 함 |
 | 로그인 유도 | 현재 화면 위 모달. "작성 중인 코드와 아바타 위치는 그대로 유지" 문구 | Google OAuth 팝업 |
@@ -25,8 +28,8 @@
 
 | 영역 | 응답 | 표시 |
 |---|---|---|
-| 문제 바꾸기 (`다른 문제` 팝오버) | `GET /api/problems` → `ProblemSummaryResponse(id, title, level)` | 번호, 제목, `LV. n`, 로그인 유저가 푼 문제에 `DONE` 뱃지(푼 문제 API는 6단계) |
-| 지문 탭 | `GET /api/problems/{id}` → `ProblemDetailResponse` | `title`, `level`, `timeLimitMs`·`memoryLimitMb` 칩, `parameters`+`returnType`으로 시그니처 한 줄(`solution(int[] numbers) → int`), `description`(Markdown) |
+| 문제 바꾸기 (문제 선택 화면, `다른 문제` 팝오버는 2026-11-11 제거) | `GET /api/problems` → `ProblemSummaryResponse(id, title, level)` | 번호, 제목, `LV. n`, 로그인 유저가 푼 문제에 `DONE` 뱃지(푼 문제 API는 6단계) |
+| 지문 탭 | `GET /api/problems/{id}` → `ProblemDetailResponse` | `title`, `level`, `timeLimitMs`·`memoryLimitMb` 칩, `description`(Markdown). 시그니처 한 줄은 지문 위에 두지 않음(2026-11-11 사용자 결정, 에디터 시작 코드에 이미 보임) |
 | 에디터 | `starterCode` (`Map<Language, String>`) | 언어를 바꾸면 그 언어의 시작 코드. 작성 중 코드는 localStorage에 문제·언어별로 저장 |
 | 터미널 | `POST /api/problems/{id}/runs` → `RunResponse(verdict, passedCount, totalCount, score, compileLog, tests)` | 아래 규칙 |
 
