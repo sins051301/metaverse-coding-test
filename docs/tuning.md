@@ -18,6 +18,11 @@
 | 값 | 위치 | 지금 값 | 임시로 정한 근거 | 다시 정할 때 볼 것 | 언제 |
 |---|---|---|---|---|---|
 | 위치 전송 간격 | `loungeConnection.MOVE_SEND_INTERVAL_MS`, 보간은 `RemoteCats.FOLLOW_DURATION_MS` | 움직일 때만, 최대 100ms에 한 번 + 멈출 때 1번, 받는 쪽은 100ms 보간 | 초당 10번이면 눈에 부드럽고, 30명이 걸어도 서버 수신 초당 300개·송신 9,000개로 서버 1대가 감당 | 접속자 수가 늘 때 서버 송신량, 다른 사람 고양이가 끊겨 보이는지 | 2단계 구현 후 |
+| 타이핑 판단 | `activityTracker.TYPING_HOLD_MS` | 5초 | 설계 문서 값. 잠깐 생각하는 동안 말풍선이 깜빡이지 않을 만큼 | 말풍선이 너무 자주 켜졌다 꺼지는지 | 서비스 공개 후 |
+| 낮잠 판단 | `activityTracker.NAP_AFTER_MS` | 5분 | 설계 문서 값 | 지문을 오래 읽는 사람이 낮잠으로 보이는지 | 서비스 공개 후 |
+| 별·SOLVED! 표시 | `catView.SOLVED_SHOW_MS` | 10초 | 축하가 눈에 띄되 오래 가리지 않게 | — | 서비스 공개 후 |
+| 오답 ... 표시 | `catView.FAILURE_SHOW_MS` | 3초 | 임시 실패 이펙트 | 실패 이펙트를 정식으로 정할 때 | 이펙트 정리 때 |
+| 하트비트 | `LoungeWebSocketConfiguration.HEARTBEAT_MILLIS` | 10초 | stompjs 기본값과 같게 | 유령 고양이가 사라지는 데 걸리는 시간, 모바일 배터리 | 배포 후 |
 | 재연결 대기 | `loungeConnection.RECONNECT_DELAY_MS` | 3초 | 서버 재시작 중 계속 두드리지 않을 만큼 | 배포 후 끊김이 잦은지 | 배포 시 |
 | 바로 옮기는 거리 | `RemoteCats.SNAP_DISTANCE` | 40도트 | 100ms에 걷는 거리(4.5도트)의 약 9배. 이보다 멀면 재연결 등으로 밀린 것으로 봄 | 남의 고양이가 순간이동하는 게 거슬리는지 | 2단계 확인 후 |
 | 걷는 속도 | `LoungeScene.WALK_SPEED` | 초당 45도트 | 라운지(4배)에서 화면 초당 약 180px. 방(320도트)을 가로지르는 데 약 7초 | 사용자가 답답해하는지 | 서비스 공개 후 |
