@@ -1,0 +1,54 @@
+/* docs/ui-design.md 3장 테마 토큰. 값은 목업(https://claude.ai/artifact/Htr11PW2b1iUMcFVjFbwXS)과 같다 */
+:root {
+  --color-paper: oklch(24% 0.012 60);
+  --color-paper-2: oklch(29% 0.014 60);
+  --color-paper-3: oklch(20% 0.011 60);
+  --color-raised: oklch(33% 0.016 60);
+  --color-ink: oklch(95% 0.012 85);
+  --color-ink-2: oklch(89% 0.015 80);
+  --color-muted: oklch(75% 0.02 70);
+  --color-rule: oklch(38% 0.016 60);
+  --color-card: oklch(17% 0.01 60);
+  --color-card-ink: oklch(95% 0.012 85);
+  --color-card-muted: oklch(60% 0.02 70);
+  --color-card-rule: oklch(29% 0.014 60);
+  --color-tag: oklch(95% 0.02 85);
+  --color-tag-ink: oklch(25% 0.02 60);
+  --color-accent: oklch(83% 0.115 56);
+  --color-accent-2: oklch(74% 0.15 46);
+  --color-accent-ink: oklch(30% 0.07 40);
+  --color-focus: oklch(88% 0.14 85);
+  --color-ok: oklch(80% 0.15 145);
+  --color-bad: oklch(73% 0.15 22);
+  --shadow-card: 0 16px 36px -18px oklch(6% 0.01 60 / 0.8);
+
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.2rem;
+  --text-xl: 1.44rem;
+  --text-4xl: 2.488rem;
+
+  --radius-panel: 6px;
+  --radius-pill: 999px;
+  --radius-bubble: 16px;
+  --rule-hair: 1px;
+  --rule-bar: 2px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-micro: 120ms;
+
+  --font-display: 'Gabarito', 'Jua', sans-serif;
+  --font-body: 'Manrope', 'Gowun Dodum', sans-serif;
+  --font-button: 'Manrope', 'Jua', sans-serif;
+  --font-code: 'JetBrains Mono', 'Gowun Dodum', monospace;
+  --tracking-display: -0.025em;
+}

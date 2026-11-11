@@ -1,0 +1,147 @@
+.workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.message {
+  flex: 1;
+  padding: var(--space-lg);
+  color: var(--color-muted);
+}
+
+.problemBar {
+  height: 48px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding-inline: var(--space-xs);
+}
+
+.backLink {
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-pill);
+  color: var(--color-muted);
+  font-family: var(--font-button);
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color var(--dur-micro) var(--ease-out);
+}
+
+.backLink:hover {
+  background: var(--color-paper-2);
+  color: var(--color-ink);
+}
+
+.problemTitle {
+  font-size: var(--text-xl);
+}
+
+.level {
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.languageSelect {
+  height: 40px;
+  padding-inline: var(--space-sm);
+  border: var(--rule-bar) solid var(--color-rule);
+  border-radius: var(--radius-panel);
+  background: var(--color-paper-3);
+  color: var(--color-ink);
+  font-family: var(--font-button);
+  font-weight: 700;
+}
+
+.main {
+  flex: 1;
+  min-height: 0;
+}
+
+.columnSeparator {
+  width: var(--space-sm);
+}
+
+.rowSeparator {
+  height: var(--space-sm);
+}
+
+.columnSeparator,
+.rowSeparator {
+  position: relative;
+  outline: none;
+}
+
+.columnSeparator::after,
+.rowSeparator::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  transition: background-color var(--dur-micro) var(--ease-out);
+}
+
+.columnSeparator::after {
+  width: 2px;
+}
+
+.rowSeparator::after {
+  height: 2px;
+}
+
+.columnSeparator:hover::after,
+.rowSeparator:hover::after,
+.columnSeparator:focus-visible::after,
+.rowSeparator:focus-visible::after {
+  background: var(--color-accent);
+}
+
+.editorCard {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: var(--rule-hair) solid var(--color-card-rule);
+  border-radius: var(--radius-panel);
+  background: var(--color-card);
+  color: var(--color-card-ink);
+  box-shadow: var(--shadow-card);
+}
+
+.editorHead {
+  height: 44px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding-inline: var(--space-lg) var(--space-md);
+  border-bottom: var(--rule-hair) solid var(--color-card-rule);
+  font-weight: 700;
+}
+
+.editorBody {
+  flex: 1;
+  min-height: 0;
+}
+
+.editorLoading {
+  padding: var(--space-md) var(--space-lg);
+  color: var(--color-card-muted);
+}
+
+.actionBar {
+  height: 52px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-inline: var(--space-xs);
+}
