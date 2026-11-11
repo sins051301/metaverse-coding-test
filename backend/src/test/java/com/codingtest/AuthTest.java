@@ -1,8 +1,10 @@
 package com.codingtest;
 
+import com.codingtest.auth.LoginSuccessHandler;
 import com.codingtest.auth.TokenService;
 import com.codingtest.user.User;
 import com.codingtest.user.UserService;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -14,8 +16,17 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.OidcIdToken;
+import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,6 +53,9 @@ class AuthTest {
 
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
+
+	@Autowired
+	private LoginSuccessHandler loginSuccessHandler;
 
 	@Test
 	@DisplayName("처음 로그인하면 사용자_XXXXXX 닉네임으로 회원을 만들고, 다시 로그인하면 같은 회원을 돌려준다")
@@ -105,6 +119,33 @@ class AuthTest {
 
 		assertThat(result).hasStatus(HttpStatus.FOUND);
 		assertThat(result.getResponse().getHeader(HttpHeaders.LOCATION)).startsWith("https://accounts.google.com/");
+	}
+
+	@Test
+	@DisplayName("Google 로그인이 끝나면 토큰을 HttpOnly 쿠키로 심고 프론트엔드 /login/callback 으로 보낸다")
+	void setsTokenCookieAndRedirectsToFrontendAfterLogin() throws Exception {
+		OidcIdToken idToken = new OidcIdToken("google-id-token", Instant.now(), Instant.now().plusSeconds(60),
+				Map.of("sub", "google-subject-redirect", "email", "redirect@example.com"));
+		MockHttpServletResponse response = new MockHttpServletResponse();
+
+		loginSuccessHandler.onAuthenticationSuccess(new MockHttpServletRequest(), response,
+				new OAuth2AuthenticationToken(new DefaultOidcUser(List.of(), idToken), List.of(), "google"));
+
+		assertThat(response.getRedirectedUrl()).isEqualTo("http://localhost:3000/login/callback");
+		String setCookie = response.getHeader(HttpHeaders.SET_COOKIE);
+		assertThat(setCookie).startsWith("accessToken=").contains("HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=86400");
+
+		String token = setCookie.substring("accessToken=".length(), setCookie.indexOf(';'));
+		assertThat(mockMvc.get().uri("/api/users/me").cookie(new Cookie("accessToken", token))).hasStatusOk();
+	}
+
+	@Test
+	@DisplayName("로그아웃하면 토큰 쿠키를 만료시킨다")
+	void expiresTokenCookieOnLogout() {
+		MvcTestResult result = mockMvc.post().uri("/api/auth/logout").exchange();
+
+		assertThat(result).hasStatus(HttpStatus.NO_CONTENT);
+		assertThat(result.getResponse().getHeader(HttpHeaders.SET_COOKIE)).startsWith("accessToken=;").contains("Max-Age=0");
 	}
 
 }

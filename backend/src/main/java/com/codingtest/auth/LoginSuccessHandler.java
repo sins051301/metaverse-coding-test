@@ -5,31 +5,33 @@ import com.codingtest.user.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
-import java.util.Map;
 
 /**
- * Google 로그인이 끝나면 회원을 찾거나 만들고, 우리 서버의 JWT 를 {"accessToken": "..."} 로 돌려준다.
- * 프론트엔드가 생기면 로그인 팝업에 토큰을 넘기는 방식으로 바꾼다.
+ * Google 로그인이 끝나면 회원을 찾거나 만들고, 우리 서버의 JWT 를 HttpOnly 쿠키로 심은 뒤 프론트엔드의 {@code /login/callback} 으로 돌려보낸다.
+ * 토큰이 URL 에도, 프론트엔드 자바스크립트에도 드러나지 않는다 (쿠키 속성은 AccessTokenCookie).
  */
 @Component
 public class LoginSuccessHandler implements AuthenticationSuccessHandler {
 
 	private final UserService userService;
 	private final TokenService tokenService;
-	private final JsonMapper jsonMapper;
+	private final AccessTokenCookie accessTokenCookie;
+	private final String frontendUrl;
 
-	public LoginSuccessHandler(UserService userService, TokenService tokenService, JsonMapper jsonMapper) {
+	public LoginSuccessHandler(UserService userService, TokenService tokenService, AccessTokenCookie accessTokenCookie,
+			@Value("${app.frontend-url}") String frontendUrl) {
 		this.userService = userService;
 		this.tokenService = tokenService;
-		this.jsonMapper = jsonMapper;
+		this.accessTokenCookie = accessTokenCookie;
+		this.frontendUrl = frontendUrl;
 	}
 
 	@Override
@@ -43,9 +45,8 @@ public class LoginSuccessHandler implements AuthenticationSuccessHandler {
 			session.invalidate();
 		}
 
-		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-		response.setCharacterEncoding("UTF-8");
-		jsonMapper.writeValue(response.getWriter(), Map.of("accessToken", tokenService.issue(user.getId())));
+		response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie.create(tokenService.issue(user.getId())).toString());
+		response.sendRedirect(frontendUrl + "/login/callback");
 	}
 
 }

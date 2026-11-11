@@ -13,6 +13,8 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
@@ -26,20 +28,37 @@ public class SecurityConfiguration {
 	private static final int MINIMUM_SECRET_BYTES = 32;
 
 	@Bean
-	SecurityFilterChain securityFilterChain(HttpSecurity http, LoginSuccessHandler loginSuccessHandler) {
+	SecurityFilterChain securityFilterChain(HttpSecurity http, LoginSuccessHandler loginSuccessHandler, BearerTokenResolver bearerTokenResolver) {
 		http
-				// 인증은 브라우저가 자동으로 보내지 않는 Authorization 헤더로만 하므로, 쿠키를 노리는 CSRF 공격이 성립하지 않는다.
+				// 토큰 쿠키는 SameSite=Lax 라 다른 사이트에서 보낸 POST 에는 붙지 않는다. 그래서 CSRF 토큰 없이도 남의 사이트가 내 이름으로 실행·제출하지 못한다.
+				// 이 전제가 깨지지 않도록 상태를 바꾸는 API 를 GET 으로 만들지 않는다 (Lax 는 다른 사이트에서 링크로 여는 GET 에는 쿠키를 붙인다).
 				.csrf(AbstractHttpConfigurer::disable)
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(HttpMethod.GET, "/api/problems", "/api/problems/*").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
 						.requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/error").permitAll()
 						.anyRequest().authenticated())
 				.oauth2Login(login -> login.successHandler(loginSuccessHandler))
-				.oauth2ResourceServer(resourceServer -> resourceServer.jwt(Customizer.withDefaults()))
+				.oauth2ResourceServer(resourceServer -> resourceServer
+						.bearerTokenResolver(bearerTokenResolver)
+						.jwt(Customizer.withDefaults()))
 				// API 는 토큰이 없을 때 Google 로그인 화면으로 보내지 않고 401 로 답한다.
 				.exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
 						new BearerTokenAuthenticationEntryPoint(), PathPatternRequestMatcher.withDefaults().matcher("/api/**")));
 		return http.build();
+	}
+
+	/**
+	 * 토큰을 Authorization 헤더에서 먼저 찾고, 없으면 accessToken 쿠키에서 찾는다.
+	 * 브라우저(프론트엔드)는 HttpOnly 쿠키로, Swagger 와 테스트는 헤더(Authorize 버튼)로 보낸다.
+	 */
+	@Bean
+	BearerTokenResolver bearerTokenResolver(AccessTokenCookie accessTokenCookie) {
+		DefaultBearerTokenResolver headerResolver = new DefaultBearerTokenResolver();
+		return request -> {
+			String headerToken = headerResolver.resolve(request);
+			return headerToken != null ? headerToken : accessTokenCookie.read(request).orElse(null);
+		};
 	}
 
 	@Bean
