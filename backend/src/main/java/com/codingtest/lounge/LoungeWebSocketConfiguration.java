@@ -1,8 +1,10 @@
 package com.codingtest.lounge;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
@@ -23,6 +25,8 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @EnableWebSocketMessageBroker
 public class LoungeWebSocketConfiguration implements WebSocketMessageBrokerConfigurer {
 
+	private static final long HEARTBEAT_MILLIS = 10_000;
+
 	private final LoungeHandshakeHandler loungeHandshakeHandler;
 	private final String frontendUrl;
 
@@ -42,10 +46,23 @@ public class LoungeWebSocketConfiguration implements WebSocketMessageBrokerConfi
 
 	@Override
 	public void configureMessageBroker(MessageBrokerRegistry registry) {
-		registry.enableSimpleBroker("/topic", "/queue");
+		registry.enableSimpleBroker("/topic", "/queue")
+				// 하트비트: 양쪽이 10초마다 "살아 있음"을 주고받는다. 브라우저가 인사 없이 사라지면(와이파이 끊김, 프록시에서 끊김)
+				// TCP 연결만 남아 서버는 끊긴 줄 모르고 고양이가 유령처럼 남는다. 신호가 끊긴 연결은 서버가 닫고 퇴장(left)을 방송한다
+				.setHeartbeatValue(new long[] {HEARTBEAT_MILLIS, HEARTBEAT_MILLIS})
+				.setTaskScheduler(heartbeatScheduler());
 		registry.setApplicationDestinationPrefixes("/app");
 		// 보낼 때도 같은 연결로 가는 메시지는 처리한 순서대로 보낸다 (받는 쪽 화면에서 고양이가 뒤로 튀지 않게)
 		registry.setPreservePublishOrder(true);
+	}
+
+	// 하트비트를 보내고 확인하는 시계. 빈으로 두어 서버가 꺼질 때 Spring 이 스레드를 정리한다
+	@Bean
+	ThreadPoolTaskScheduler heartbeatScheduler() {
+		ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+		scheduler.setPoolSize(1);
+		scheduler.setThreadNamePrefix("lounge-heartbeat-");
+		return scheduler;
 	}
 
 }

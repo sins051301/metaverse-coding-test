@@ -1,5 +1,6 @@
 package com.codingtest.lounge;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -14,19 +15,31 @@ final class LoungeMessages {
 	/**
 	 * 다른 사람에게 보이는 아바타 하나의 상태.
 	 *
-	 * @param deskId 앉아 있으면 책상 번호, 서 있으면 null
+	 * @param deskId   앉아 있으면 책상 번호, 서 있으면 null
+	 * @param activity idle(그냥 있음), typing(마지막 입력 후 5초 안), napping(앉은 채 5분 입력 없음).
+	 *                 판단은 클라이언트가 하고 바뀔 때만 알린다. 서 있으면 늘 idle
 	 */
 	record AvatarState(String id, String nickname, boolean member, String coat,
-			int x, int y, String direction, boolean moving, Integer deskId) {
+			int x, int y, String direction, boolean moving, Integer deskId, String activity) {
 
 		AvatarState movedTo(int x, int y, String direction, boolean moving) {
-			return new AvatarState(id, nickname, member, coat, x, y, direction, moving, deskId);
+			return new AvatarState(id, nickname, member, coat, x, y, direction, moving, deskId, activity);
 		}
 
 		AvatarState seatedAt(Integer deskId) {
-			return new AvatarState(id, nickname, member, coat, x, y, direction, false, deskId);
+			return new AvatarState(id, nickname, member, coat, x, y, direction, false, deskId, deskId == null ? "idle" : activity);
 		}
 
+		AvatarState withActivity(String activity) {
+			return new AvatarState(id, nickname, member, coat, x, y, direction, moving, deskId, activity);
+		}
+
+	}
+
+	/**
+	 * 누군가 제출에서 AC 를 받은 기록. 라운지 오른쪽 "방금 푼 고양이" 목록과 벽 전광판에 쓴다.
+	 */
+	record RecentSolve(String nickname, String problemTitle, Instant solvedAt) {
 	}
 
 	// 클라이언트 → 서버 (/app/lounge/...)
@@ -46,14 +59,30 @@ final class LoungeMessages {
 	record SitRequest(int deskId) {
 	}
 
+	record ActivityRequest(String activity) {
+	}
+
 	// 서버 → 클라이언트
 
 	/**
 	 * /topic/lounge 로 모두에게 방송한다.
 	 *
-	 * @param type joined, moved, sat, stood, left
+	 * @param type joined, moved, sat, stood, left, activity
 	 */
 	record LoungeEvent(String type, AvatarState avatar) {
+	}
+
+	/**
+	 * /topic/lounge 로 모두에게 방송한다. 누가 문제를 풀었는지.
+	 *
+	 * @param avatarIds 푼 회원의 아바타들 (탭을 여러 개 열었으면 여럿, 라운지에 없으면 비어 있음). 머리 위에 별을 띄운다
+	 */
+	record SolvedEvent(String type, List<String> avatarIds, RecentSolve solve) {
+
+		SolvedEvent(List<String> avatarIds, RecentSolve solve) {
+			this("solved", avatarIds, solve);
+		}
+
 	}
 
 	/**
@@ -62,16 +91,17 @@ final class LoungeMessages {
 	 * @param type       snapshot = 입장 직후 지금 있는 모두, sit-rejected = 그 책상에 이미 누가 앉아 있음
 	 * @param myAvatarId snapshot 에서 내 아바타가 어느 것인지
 	 * @param avatars    snapshot 의 전체 목록 (나 포함)
-	 * @param deskId     sit-rejected 의 책상 번호
+	 * @param deskId       sit-rejected 의 책상 번호
+	 * @param recentSolves snapshot 의 최근 푼 기록 (새것이 먼저)
 	 */
-	record PersonalMessage(String type, String myAvatarId, List<AvatarState> avatars, Integer deskId) {
+	record PersonalMessage(String type, String myAvatarId, List<AvatarState> avatars, Integer deskId, List<RecentSolve> recentSolves) {
 
-		static PersonalMessage snapshot(String myAvatarId, List<AvatarState> avatars) {
-			return new PersonalMessage("snapshot", myAvatarId, avatars, null);
+		static PersonalMessage snapshot(String myAvatarId, List<AvatarState> avatars, List<RecentSolve> recentSolves) {
+			return new PersonalMessage("snapshot", myAvatarId, avatars, null, recentSolves);
 		}
 
 		static PersonalMessage sitRejected(int deskId) {
-			return new PersonalMessage("sit-rejected", null, null, deskId);
+			return new PersonalMessage("sit-rejected", null, null, deskId, null);
 		}
 
 	}

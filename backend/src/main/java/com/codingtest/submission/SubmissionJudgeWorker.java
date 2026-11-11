@@ -11,6 +11,7 @@ import com.codingtest.problem.ProblemService;
 import com.codingtest.user.UserSolvedProblemRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -48,10 +49,11 @@ public class SubmissionJudgeWorker {
 	private final Judge judge;
 	private final JudgeSlots judgeSlots;
 	private final TransactionTemplate transactionTemplate;
+	private final ApplicationEventPublisher eventPublisher;
 
 	public SubmissionJudgeWorker(SubmissionRepository submissionRepository, SubmissionTestResultRepository submissionTestResultRepository,
 			UserSolvedProblemRepository userSolvedProblemRepository, ProblemService problemService, Judge judge,
-			JudgeSlots judgeSlots, TransactionTemplate transactionTemplate) {
+			JudgeSlots judgeSlots, TransactionTemplate transactionTemplate, ApplicationEventPublisher eventPublisher) {
 		this.submissionRepository = submissionRepository;
 		this.submissionTestResultRepository = submissionTestResultRepository;
 		this.userSolvedProblemRepository = userSolvedProblemRepository;
@@ -59,6 +61,7 @@ public class SubmissionJudgeWorker {
 		this.judge = judge;
 		this.judgeSlots = judgeSlots;
 		this.transactionTemplate = transactionTemplate;
+		this.eventPublisher = eventPublisher;
 	}
 
 	@Async(JudgeExecutorConfiguration.JUDGE_EXECUTOR)
@@ -81,10 +84,11 @@ public class SubmissionJudgeWorker {
 			return found;
 		});
 
+		JudgeResult result;
 		try {
 			// 트랜잭션 밖: 문제·테스트를 읽고(각 조회가 짧은 읽기 트랜잭션) 채점한다. 여기서 수 초가 걸린다.
 			Problem problem = problemService.getProblem(submission.getProblemId());
-			JudgeResult result = judge.judge(problem, problemService.getTestCases(problem.getId()),
+			result = judge.judge(problem, problemService.getTestCases(problem.getId()),
 					submission.getLanguage(), submission.getSourceCode(), JudgeMode.SUBMIT);
 
 			// 트랜잭션 2: 결과 저장, DONE 표시, AC 면 푼 문제 기록을 한 번에. 중간에 실패하면 셋 다 취소된다.
@@ -104,6 +108,12 @@ public class SubmissionJudgeWorker {
 			log.error("제출 {} 채점 실패", submissionId, exception);
 			transactionTemplate.executeWithoutResult(status ->
 					submissionRepository.findById(submissionId).orElseThrow().fail());
+			return;
+		}
+
+		// 결과가 저장(커밋)된 뒤, try 밖에서 알린다. 알림 쪽(라운지)에서 문제가 나도 채점 결과가 FAILED 로 바뀌지 않게 하려는 것이다
+		if (result.verdict() == Verdict.AC) {
+			eventPublisher.publishEvent(new SubmissionAcceptedEvent(submission.getUserId(), submission.getProblemId()));
 		}
 	}
 

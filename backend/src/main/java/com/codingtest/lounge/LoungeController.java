@@ -1,16 +1,24 @@
 package com.codingtest.lounge;
 
+import com.codingtest.lounge.LoungeMessages.ActivityRequest;
 import com.codingtest.lounge.LoungeMessages.AvatarState;
 import com.codingtest.lounge.LoungeMessages.JoinRequest;
 import com.codingtest.lounge.LoungeMessages.LoungeEvent;
 import com.codingtest.lounge.LoungeMessages.MoveRequest;
 import com.codingtest.lounge.LoungeMessages.PersonalMessage;
+import com.codingtest.lounge.LoungeMessages.RecentSolve;
 import com.codingtest.lounge.LoungeMessages.SitRequest;
+import com.codingtest.lounge.LoungeMessages.SolvedEvent;
+import com.codingtest.problem.ProblemService;
+import com.codingtest.submission.SubmissionAcceptedEvent;
+import com.codingtest.user.UserService;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
+
+import java.time.Instant;
 
 /**
  * 라운지 STOMP 메시지를 받아 접속자 목록(LoungeRegistry)을 고치고, 바뀐 것을 알린다.
@@ -26,10 +34,14 @@ class LoungeController {
 
 	private final LoungeRegistry registry;
 	private final SimpMessagingTemplate messagingTemplate;
+	private final UserService userService;
+	private final ProblemService problemService;
 
-	LoungeController(LoungeRegistry registry, SimpMessagingTemplate messagingTemplate) {
+	LoungeController(LoungeRegistry registry, SimpMessagingTemplate messagingTemplate, UserService userService, ProblemService problemService) {
 		this.registry = registry;
 		this.messagingTemplate = messagingTemplate;
+		this.userService = userService;
+		this.problemService = problemService;
 	}
 
 	// 입장: 나에게는 지금 있는 모두(snapshot)를, 다른 사람에게는 "내가 들어왔다"를 보낸다
@@ -37,7 +49,7 @@ class LoungeController {
 	void join(JoinRequest request, LoungeIdentity identity) {
 		AvatarState avatar = registry.join(identity, request);
 		messagingTemplate.convertAndSendToUser(identity.getName(), PERSONAL_QUEUE,
-				PersonalMessage.snapshot(avatar.id(), registry.all()));
+				PersonalMessage.snapshot(avatar.id(), registry.all(), registry.recentSolves()));
 		broadcast("joined", avatar);
 	}
 
@@ -57,6 +69,28 @@ class LoungeController {
 	@MessageMapping("/lounge/stand")
 	void stand(LoungeIdentity identity) {
 		registry.stand(identity.avatarId()).ifPresent(avatar -> broadcast("stood", avatar));
+	}
+
+	// 타이핑·낮잠. 키 하나마다가 아니라 상태가 바뀔 때만 온다
+	@MessageMapping("/lounge/activity")
+	void activity(ActivityRequest request, LoungeIdentity identity) {
+		registry.setActivity(identity.avatarId(), request.activity()).ifPresent(avatar -> broadcast("activity", avatar));
+	}
+
+	/**
+	 * 누가 제출에서 AC 를 받았다 (SubmissionJudgeWorker 가 결과를 저장한 뒤 남김).
+	 * "풀었다"는 클라이언트가 아니라 서버의 채점 결과로만 정한다. 클라이언트가 보내게 하면 누구나 거짓으로 보낼 수 있다.
+	 * 채점 작업 스레드에서 불린다. 알림 쪽 오류가 채점 결과를 바꾸지는 않는다 (발행이 결과 저장 뒤라서).
+	 */
+	@EventListener
+	void onSubmissionAccepted(SubmissionAcceptedEvent event) {
+		String nickname = userService.findNickname(event.userId()).orElse(null);
+		if (nickname == null) {
+			return;
+		}
+		RecentSolve solve = new RecentSolve(nickname, problemService.getProblem(event.problemId()).getTitle(), Instant.now());
+		registry.recordSolve(solve);
+		messagingTemplate.convertAndSend(TOPIC, new SolvedEvent(registry.avatarIdsOf(event.userId()), solve));
 	}
 
 	// 탭을 닫거나 네트워크가 끊기면 연결이 끝난다. 그 아바타를 지우고 앉아 있던 책상을 비운다

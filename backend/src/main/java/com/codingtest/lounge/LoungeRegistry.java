@@ -3,8 +3,11 @@ package com.codingtest.lounge;
 import com.codingtest.lounge.LoungeMessages.AvatarState;
 import com.codingtest.lounge.LoungeMessages.JoinRequest;
 import com.codingtest.lounge.LoungeMessages.MoveRequest;
+import com.codingtest.lounge.LoungeMessages.RecentSolve;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,9 +31,15 @@ class LoungeRegistry {
 	private static final Set<String> COATS = Set.of("ginger", "grey", "black", "white", "siamese");
 	private static final Set<String> DIRECTIONS = Set.of("down", "up", "left", "right");
 	private static final Pattern GUEST_NICKNAME = Pattern.compile("익명_[0-9A-F]{4}");
+	private static final Set<String> ACTIVITIES = Set.of("idle", "typing", "napping");
+	private static final int RECENT_SOLVE_LIMIT = 5;
 
 	private final Map<String, AvatarState> avatars = new ConcurrentHashMap<>();
 	private final Map<Integer, String> deskOwners = new ConcurrentHashMap<>();
+	// 회원 아바타의 users.id. 방송에는 싣지 않고, "이 회원이 풀었다" 를 그 회원의 아바타들에 이어 줄 때만 쓴다
+	private final Map<String, Long> avatarUsers = new ConcurrentHashMap<>();
+	// 최근 푼 기록. 새것이 앞. 여러 채점 스레드가 동시에 넣으므로 synchronized 로 감싸서 쓴다
+	private final Deque<RecentSolve> recentSolves = new ArrayDeque<>();
 
 	AvatarState join(LoungeIdentity identity, JoinRequest request) {
 		String avatarId = identity.avatarId();
@@ -47,8 +56,12 @@ class LoungeRegistry {
 				LoungeMap.clampY(request.y()),
 				direction(request.direction()),
 				false,
-				seated ? requestedDesk : null);
+				seated ? requestedDesk : null,
+				"idle");
 		avatars.put(avatarId, avatar);
+		if (identity.member()) {
+			avatarUsers.put(avatarId, identity.userId());
+		}
 		return avatar;
 	}
 
@@ -91,7 +104,37 @@ class LoungeRegistry {
 		return Optional.of(standing);
 	}
 
+	// 서 있는 고양이는 타이핑·낮잠이 없다. 일어난 뒤 늦게 온 활동 알림은 무시한다
+	Optional<AvatarState> setActivity(String avatarId, String activity) {
+		String checked = ACTIVITIES.contains(activity) ? activity : "idle";
+		return Optional.ofNullable(avatars.computeIfPresent(avatarId, (id, avatar) ->
+				avatar.deskId() == null ? avatar : avatar.withActivity(checked)));
+	}
+
+	List<String> avatarIdsOf(long userId) {
+		return avatarUsers.entrySet().stream()
+				.filter(entry -> entry.getValue() == userId)
+				.map(Map.Entry::getKey)
+				.toList();
+	}
+
+	void recordSolve(RecentSolve solve) {
+		synchronized (recentSolves) {
+			recentSolves.addFirst(solve);
+			while (recentSolves.size() > RECENT_SOLVE_LIMIT) {
+				recentSolves.removeLast();
+			}
+		}
+	}
+
+	List<RecentSolve> recentSolves() {
+		synchronized (recentSolves) {
+			return List.copyOf(recentSolves);
+		}
+	}
+
 	Optional<AvatarState> leave(String avatarId) {
+		avatarUsers.remove(avatarId);
 		AvatarState removed = avatars.remove(avatarId);
 		if (removed != null && removed.deskId() != null) {
 			deskOwners.remove(removed.deskId(), avatarId);
