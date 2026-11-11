@@ -52,6 +52,7 @@
 | API 확인 | Swagger UI (`/swagger-ui.html`). 운영 배포 때는 끔 |
 | 제출 API | 로그인(7단계)과 함께 만듦. 5단계는 문제 조회 + [코드 실행]만 |
 | 실행 기록 저장 | [코드 실행]도 저장 (`runs` + `run_test_results`). 제출 테이블에 `mode`로 합치지 않고 분리: 나중에 유저가 직접 추가한 테스트 입력으로 실행하는 기능을 넣으면 `test_cases`를 가리키지 않는 결과가 생기고, 합치면 제출 조회마다 `mode` 조건 누락 시 예제 AC가 푼 문제로 기록되는 버그 위험·실행 행이 대부분을 차지하는 문제가 있음 |
+| 비동기 채점 방식 | [제출]과 [코드 실행] 모두 비동기 (동기면 대기열이 생긴 뒤 HTTP 시간 제한에 걸릴 수 있음). **서버 안의 작업 스레드**: 제출을 `PENDING`으로 저장 → 커밋 후 이벤트(`@TransactionalEventListener(AFTER_COMMIT)`)로 가상 스레드 실행기에 채점을 넘기고 바로 202 응답 → 작업 스레드가 `JUDGING` → `DONE`/`FAILED`. 서버 시작 시 남은 `PENDING`·`JUDGING`을 다시 채점. DB 대기열(반복 조회 + `FOR UPDATE SKIP LOCKED`)은 서버 1대에선 이점이 작아 제외, 서버 여러 대가 되면 메시지 큐로 이동 |
 | 개발 순서 | API보다 **DB 구조를 먼저** 설계 (비동기 채점 상태를 저장해야 해서 API 형태가 DB에 따라 정해짐) |
 | DB에 저장하는 것 | `users`, `problems`, `test_cases`, `user_solved_problems`(푼 문제, 별도 테이블), `submissions` + `submission_test_results`(제출·비동기 채점 상태. 새로고침·서버 재시작·채점 오류 조사 대응), `runs` + `run_test_results`(실행 기록) |
 | DB에 저장하지 않는 것 | 게스트 정보(localStorage), 아바타 위치·상태·관전·페어 세션·Yjs 문서(서버 메모리 실시간), 페어 채팅(저장 안 함), 작성 중인 코드(일단 localStorage) |
@@ -61,6 +62,10 @@
 | 문제 출처 | 타 사이트 문제를 AI로 변형·검수 후 운영자가 직접 등록 (MVP는 seed 데이터) |
 | 관전 거부 | MVP에서 만들지 않음 |
 | 아바타 이펙트 상세 | 미정 (FR-02-4와 UC-01 내용이 다름, 추후 확정) |
+| 에디터 배치 | **분할 화면, 프로그래머스 배치**: 착석하면 맵이 왼쪽 패널로 줄고, 왼쪽 지문 / 오른쪽 위 에디터 / 아래 실행·채점 결과 (지문 위 탭 없음, 문제는 문제 바의 `다른 문제`로 바꿈) / 하단 `초기화`·`코드 실행`·`제출 후 채점하기`. 맵 패널은 48px 활동 띠로 접기 가능 (모달은 풀이 중 공간이 안 보여서 제외). 상세는 `docs/ui-design.md` |
+| UI 테마 | hallmark 디자인 스킬의 Squeeze 테마 기반: **따뜻한 차콜 바탕**(초록은 가독성 문제로 제외), 패널은 6px로 각지게 하고 버튼·칩·말풍선·이름표만 둥글게, 에디터는 가장 깊은 차콜, 복숭아색은 버튼에만. 글꼴은 Gabarito·Manrope(한글 Jua·고운돋움), 코드는 JetBrains Mono. 픽셀은 맵 안에만 |
+| 캐릭터 | **동글한 픽셀 고양이** 아바타(털 무늬 5종). 타이핑 중엔 앞발로 키보드를 두드림, 자리 비움은 낮잠 |
+| 맵 표현·에셋 | 2D 탑다운 픽셀(Three.js 3D 제외), CC0 에셋 팩(Kenney 등) |
 
 ### 권한
 
@@ -91,12 +96,12 @@
 | FR-02-1 | 단일 픽셀 라운지 | Phaser.js/Canvas 2D 픽셀 맵, 방향키/WASD 이동 |
 | FR-02-2 | 위치/상태 동기화 | WebSocket(STOMP)으로 같은 맵 접속자의 좌표·동작 상태를 저지연 브로드캐스트 |
 | FR-02-3 | 오브젝트 감지 | 책상/터미널 인접 시 `[F] 책상에 앉기` / `[F] OO님 관전/페어 요청` 툴팁 |
-| FR-02-4 | 시각 이펙트 | 타이핑 중: 푸른 픽셀 아우라 / AC: `SOLVED!` 팝업 + 폭죽 + 전광판 자막 / 오답·초과: 엎드림 + 버그 몬스터 (상세 미정) |
+| FR-02-4 | 시각 이펙트 | 타이핑 중: 고양이 앞발이 키보드를 두드리고 말풍선 / AC: `SOLVED!` 팝업 + 폭죽 + 전광판 자막 / 오답·초과: 엎드림 + 버그 몬스터 (상세 미정) |
 
 ### FR-03 에디터 및 문제 은행
 | ID | 기능 | 요구사항 |
 |---|---|---|
-| FR-03-1 | Monaco Editor 모달 | `F` 착석 시 모달 팝업, 언어(Java/JavaScript) 선택 |
+| FR-03-1 | Monaco Editor 분할 화면 | `F` 착석 시 맵이 왼쪽 패널로 줄고(접기 가능) 프로그래머스 배치로 지문·에디터·결과 표시, 언어(Java/JavaScript) 선택 |
 | FR-03-2 | 문제 은행 조회 | seed된 문제 목록 조회, 로그인 유저가 통과한 문제에 `[완료]` 뱃지 |
 | FR-03-3 | 제출 및 결과 출력 | 비동기 채점 후 결과(AC/WA/TLE/MLE/RE/CE)와 실행 시간·메모리를 에디터 하단 터미널에 출력 |
 | FR-03-4 | 코드 관전 | 실시간으로 작성 중인 코드를 관전 |
@@ -147,7 +152,7 @@ MVP 이후 공용 맵·관전 구조 위에 확장한다 (MVP 설계 변경 불�
 | API 문서 | **springdoc-openapi 3.2.0** (Swagger UI) | 컨트롤러에서 API 문서가 자동으로 만들어지고 브라우저에서 바로 요청을 보내 볼 수 있음. Spring Boot 4.1.2 기준 빌드 |
 | 테스트 | JUnit 5, AssertJ, **Testcontainers 2** | 샌드박스와 DB는 실제 Docker 컨테이너를 띄우는 통합 테스트(`judgeTest`) |
 | 기타 | Lombok(JPA 엔티티 한정), DTO는 `record` | |
-| 프론트엔드 | React, Phaser.js, Monaco Editor | (예정) |
+| 프론트엔드 | React, Phaser.js, Monaco Editor | (예정) 맵은 2D 탑다운이라 타일맵·충돌·입력이 내장된 Phaser 추천(3D·PixiJS 비교는 `docs/ui-design.md` 5장). 버전·React 연결 방식은 구현 전 검토 |
 
 ---
 
@@ -158,13 +163,15 @@ coding-test/
 ├─ README.md
 ├─ compose.yaml                  로컬 MySQL 8.4
 ├─ docs/erd.dbml                 ERD (dbdiagram.io에 붙여 넣어 보기)
+├─ docs/ui-design.md             UI 설계 (화면·레이아웃·테마 토큰·이펙트·맵 기술 검토)
 ├─ backend/                      Spring Boot (Gradle Kotlin DSL)
 │  ├─ src/main/java/com/codingtest/
 │  │  ├─ auth/                   보안 설정, Google 로그인 성공 처리, JWT 발급(TokenService)
 │  │  ├─ user/                   회원 엔티티, 내 정보 API
-│  │  ├─ judge/                  채점 샌드박스 실행(SandboxRunner) + 판정기(Judge)
+│  │  ├─ judge/                  채점 샌드박스 실행(SandboxRunner) + 판정기(Judge) + 작업 스레드 실행기·재시작 복구·공통 응답
+│  │  ├─ submission/             [제출] API, 엔티티, 작업 스레드 채점(SubmissionJudgeWorker)
 │  │  ├─ problem/                문제 엔티티(Problem, ProblemParameter, TestCase), Repository, 문제 조회 API, 시작 코드(StarterCode)
-│  │  └─ run/                    [코드 실행] API
+│  │  └─ run/                    [코드 실행] API, 엔티티, 작업 스레드 채점(RunJudgeWorker)
 │  ├─ src/main/resources/db/migration/   Flyway: V1 테이블 생성, V2 seed 문제 5개
 │  └─ src/test/resources/problems/{id}-{slug}/   검증용 코드: accepted(AC) / wrong(WA) / slow(TLE) .java .js
 ├─ frontend/                     React (예정)
@@ -188,6 +195,7 @@ docker compose up -d    # 로컬 MySQL (localhost:3307, DB·계정·비밀번호
 cd backend
 ./gradlew test          # 일반 테스트 (Docker 불필요)
 ./gradlew judgeTest     # 채점 이미지 빌드 + 실제 컨테이너로 샌드박스·DB 테스트 (MySQL은 Testcontainers가 따로 띄움)
+./gradlew concurrencyTest   # 제출 10건 동시 채점 측정 (무거워서 judgeTest와 분리)
 ./gradlew buildJudgeImages   # 채점 이미지만 빌드
 ./gradlew bootRun       # 서버 실행 (시작할 때 Flyway가 테이블과 seed 문제를 만듦, 아래 환경 변수 필요)
 ```
@@ -210,12 +218,15 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 |---|---|---|
 | GET | `/api/problems` | 문제 목록 (`id`, `title`, `level`) |
 | GET | `/api/problems/{id}` | 문제 상세 (지문, 파라미터, 반환 타입, 시간·메모리 제한, 언어별 `starterCode`) |
-| POST | `/api/problems/{id}/runs` | [코드 실행] `{"language": "JAVA", "sourceCode": "..."}` → 예제만 채점. **로그인 필요** (저장은 6단계 다음 작업) |
-| GET | `/api/users/me` | 내 정보 (`id`, `nickname`, `email`). 토큰 확인용. **로그인 필요** |
+| POST | `/api/problems/{id}/runs` | [코드 실행] `{"language": "JAVA", "sourceCode": "..."}` → 예제만 채점. 접수만 하고 `202 {"id", "status": "PENDING"}`. **로그인 필요** |
+| GET | `/api/runs/{id}` | 실행 결과 (상태, 판정, 통과 수, 예제별 입력·기댓값·반환값·출력). `status`가 `DONE`이 될 때까지 다시 부른다. 본인 것만 |
+| POST | `/api/problems/{id}/submissions` | [제출] 예제 + 히든 전부 채점. 접수만 하고 `202`. **로그인 필요** |
+| GET | `/api/submissions/{id}` | 제출 결과 (상태, 판정, 점수, 테스트별 결과. 히든은 판정·시간·메모리만). 본인 것만 (남의 것은 404) |
+| GET | `/api/users/me` | 내 정보 (`id`, `nickname`, `email`, `totalSolved`). **로그인 필요** |
 | GET | `/oauth2/authorization/google` | Google 로그인 시작 → 성공하면 `{"accessToken": "..."}` |
 
 에러는 표준 형식(RFC 9457 `ProblemDetail`): 없는 문제 404, 빈 코드·64K자 초과·지원하지 않는 언어 400. 로그인이 필요한 API에 토큰이 없거나 틀리면 401 (Google 로그인 화면으로 보내지 않음).
-아직 동시 실행 수 제한이 없어 요청마다 바로 컨테이너를 띄운다 (7단계에서 대기열 추가).
+아직 동시 실행 수 제한이 없어 접수되는 대로 바로 컨테이너를 띄운다 (7단계에서 대기열 추가). 비동기 채점의 동작과 선택 이유는 7장 "비동기 채점".
 
 ---
 
@@ -292,6 +303,50 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 
   Java 8개 동시 제출 시 1건 6.4초(+20%), 생성 0.2초·시작 0.6초까지 늘어남. `javac`가 컴파일 제한(10초)의 절반 가까이를 쓰므로, 배포 서버에서 다시 측정해 제한을 확인할 것.
 
+### 비동기 채점 (제출·실행)
+
+**용어**
+- 요청 스레드: HTTP 요청을 받아 응답하는 일꾼. 이 일꾼이 채점까지 하면 응답이 5초씩 늦어진다.
+- 작업 스레드: 응답과 상관없이 뒤에서 채점하는 일꾼. `JudgeExecutorConfiguration`의 실행기가 가상 스레드로 만든다.
+- 폴링: 클라이언트가 조회 API를 일정 간격(1초쯤)으로 다시 불러 끝났는지 확인하는 방식.
+
+**흐름** (제출 기준, 실행도 같음)
+1. `POST /api/problems/1/submissions` → `SubmissionService#submit`이 트랜잭션 안에서 `PENDING` 행을 INSERT하고 `SubmissionCreatedEvent`를 남긴다.
+2. 트랜잭션 커밋 → 요청 스레드는 바로 `202 {"id": 7, "status": "PENDING"}` 응답 (수십 ms).
+3. 커밋 직후 `SubmissionJudgeWorker#onSubmissionCreated`가 작업 스레드에서 실행된다.
+   - 트랜잭션 ①: `JUDGING`으로 표시
+   - 트랜잭션 밖: 문제·테스트를 읽고 `Judge`로 채점 (Docker, 수 초)
+   - 트랜잭션 ②: 테스트 결과 저장 + `DONE`·판정·점수 + AC면 `user_solved_problems` 기록 (하나라도 실패하면 셋 다 취소)
+   - Docker 장애 같은 시스템 오류면 `FAILED`
+4. 클라이언트가 `GET /api/submissions/7`을 반복 호출하다가 `DONE`이면 결과를 보여 준다.
+
+**선택과 이유**
+| 항목 | 선택 | 이유 (대안) |
+|---|---|---|
+| 비동기 방식 | 서버 안 작업 스레드 (`@Async` + 가상 스레드 실행기) | 서버 1대라 가장 단순하고 지연·불필요한 DB 조회가 없다. (DB 대기열: 1초마다 `PENDING`을 조회 + `FOR UPDATE SKIP LOCKED` — 서버 여러 대에 강하지만 복잡하고, 채점 중 꺼진 `JUDGING` 복구는 어차피 필요. 메시지 큐: 서버 여러 대가 되면) |
+| 채점 시작 시점 | 커밋 **후** 이벤트 (`@TransactionalEventListener(AFTER_COMMIT)`) | 커밋 전에 넘기면 작업 스레드(다른 DB 연결)가 아직 커밋 안 된 행을 못 볼 수 있다. 저장이 롤백되면 채점도 시작되지 않는다 |
+| 트랜잭션 범위 | `TransactionTemplate`으로 짧은 트랜잭션 두 개, 채점은 그 밖 | 수 초 걸리는 채점을 트랜잭션으로 묶으면 그동안 DB 연결을 붙잡아 연결 풀이 바닥난다 |
+| 서버 재시작 | 시작 시 `PENDING`·`JUDGING`을 다시 채점 (`JudgeRecovery`) | "채점해 줘" 전달은 메모리에만 있어 서버가 꺼지면 사라진다. 결과는 끝날 때 한 트랜잭션으로만 저장되므로 처음부터 다시 채점하면 된다 |
+| 결과 전달 | 조회 API 폴링 | Swagger로 확인하기 쉽다. STOMP 푸시는 맵·실시간 기능을 만들 때 같은 연결로 추가 |
+| [코드 실행]도 비동기 | 예 | 동기면 7단계 대기열이 생긴 뒤 요청이 오래 기다리다 HTTP 시간 제한에 걸릴 수 있다 |
+| 남의 제출·실행 조회 | 404 | 403이면 "그 번호의 제출이 있다"는 사실이 드러난다 |
+| 푼 문제 기록 | `INSERT IGNORE` | "조회 → 없으면 저장"은 같은 유저의 AC 두 건이 동시에 끝나면 PK 충돌. DB가 한 문장으로 처리하면 경쟁이 없고 처음 시각도 보존된다 |
+| 결과 화면 순서 | 결과 행 + 순서 목록(`id`, `hidden`) + 예제를 따로 읽어 메모리에서 합침 | `submission_test_results JOIN test_cases ORDER BY`는 1.7MB `input` 때문에 `Out of sort memory` (8장 "순서") |
+| 시각 타입 | `Instant` | `LocalDateTime`은 시간대가 없어 Hibernate가 JVM 시간대(KST)로 보고 UTC로 한 번 더 바꿔 9시간 어긋났다 (실제로 겪음) |
+| 비동기 테스트 | Awaitility (테스트 전용) | "DONE이 될 때까지 최대 120초, 300ms마다 확인"을 한 줄로 (`JudgeApiClient#awaitDone`). 직접 반복문을 쓰면 시간 제한 누락으로 테스트가 멈추기 쉽고, 실패 시 마지막 상태도 알려 준다 |
+| 마이그레이션 | `V3__create_runs.sql` 새 파일 | 이미 적용된 V1을 고치면 Flyway가 체크섬 불일치로 서버 시작을 막는다. 바꿀 내용은 항상 새 번호 파일로 |
+
+**주의한 Spring 동작**
+- `@Async`·`@Transactional`은 Spring 프록시가 메서드 호출을 가로채서 동작한다. 같은 클래스 안에서 `this.method()`로 부르면 프록시를 거치지 않아 무시된다. 그래서 채점은 서비스와 다른 빈(`SubmissionJudgeWorker`)에 두고, 트랜잭션은 `TransactionTemplate`으로 직접 나눴다.
+- 재시작 복구는 트랜잭션 밖에서 이벤트를 남긴다. 리스너의 `fallbackExecution = true`가 있어야 이런 이벤트도 처리된다.
+
+**동시 제출 기준 측정** (`./gradlew concurrencyTest`, 대기열 없음, 2026-11-05, 16코어·Docker VM 8GB 노트북, 1회)
+| 조건 | 전체 | 건별(접수→완료) 최소 / 중간 / 최대 |
+|---|---|---|
+| 제출 10건 동시 (Java 5, JS 5, 문제 1 정답 코드) | 9.0초 | 3.0초 / 7.0초 / 8.0초 |
+
+모두 AC. 단독 제출(Java 약 5.3초, JS 약 1.0초, 7장 비용 표)보다 느려진 만큼이 동시 실행의 비용이다. `created_at`·`judged_at`이 초 단위 `DATETIME`이라 건별 시간은 1초 단위로 반올림된다. 7단계에서 대기열을 넣은 뒤 같은 테스트로 비교한다.
+
 ### 부하 대응 (나중에 적용)
 | 시점 | 방법 |
 |---|---|
@@ -307,7 +362,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 ## 8. DB 설계 (MySQL, Flyway로 생성)
 
 ERD: [`docs/erd.dbml`](docs/erd.dbml) (dbdiagram.io에 붙여 넣어 보기). 실제 테이블: `backend/src/main/resources/db/migration/V1__create_tables.sql`.
-지금 엔티티로 매핑한 테이블은 `problems`, `problem_parameters`, `test_cases`이고, 나머지는 쓰는 단계(5~7)에서 매핑한다.
+모든 테이블을 엔티티로 매핑했다. `runs`·`run_test_results`는 `V3__create_runs.sql`이 만든다. 아직 매핑하지 않은 것은 나중에 만들 `run_custom_test_results`뿐이다.
 
 ### 테이블
 | 테이블 | 용도 | 키 |
@@ -349,7 +404,7 @@ JPA 매핑은 `JsonNodeConverter`로 문자열 ↔ `JsonNode` 변환 (Hibernate 
 ### DB가 검사할 규칙 (V1의 UNIQUE·CHECK 제약, `SchemaConstraintsTest`로 확인)
 - `submissions`: `status = DONE`이면 `verdict`·`score`·`judged_at` NOT NULL, 그 외 상태면 셋 다 NULL
 - `submissions`: `verdict = CE` ⇔ `compile_log` NOT NULL
-- `runs`: `status = DONE`이면 `verdict`·`judged_at` NOT NULL, 그 외 상태면 둘 다 NULL. `verdict = CE` ⇔ `compile_log` NOT NULL (7단계에서 마이그레이션 추가)
+- `runs`: `status = DONE`이면 `verdict`·`judged_at` NOT NULL, 그 외 상태면 둘 다 NULL. `verdict = CE` ⇔ `compile_log` NOT NULL (V3)
 - 코드값 목록: `language`(JAVA, JAVASCRIPT), `status`, `verdict`(AC, WA, TLE, MLE, RE, CE), 파라미터 `type`·`return_type`(지원 타입 9개)
 - 범위: `time_limit_ms > 0`, `memory_limit_mb >= 128`, `level` 0~5, `score` 0~100
 
@@ -376,6 +431,6 @@ JPA 매핑은 `JsonNodeConverter`로 문자열 ↔ `JsonNode` 변환 (Hibernate 
 | 3 | DB 구조 설계 (ERD, 8장) + 기술 선택 (JPA, Docker Compose, Testcontainers, Flyway) | 완료 |
 | 4 | MySQL + Flyway(V1 테이블·제약, V2 seed 문제), 문제 엔티티·Repository, `Judge`가 DB 문제로 채점 | 완료 |
 | 5 | API: 문제 목록·상세(시작 코드 포함), 코드 실행 + Swagger UI | 완료 |
-| 6 | **Google OAuth + JWT (완료)**, 제출 API(`submissions` 저장·조회) + 실행 기록 저장(`runs`) + 비동기 채점 + 결과 전달(조회 API 또는 STOMP 푸시), `user_solved_problems`/Total Solved, 동시 제출 JUnit 테스트(대기열 없는 상태의 기준 측정) | 진행 중 |
+| 6 | Google OAuth + JWT, 제출 API(`submissions` 저장·조회) + 실행 기록 저장(`runs`) + 비동기 채점 + 결과 전달(조회 API 또는 STOMP 푸시), `user_solved_problems`/Total Solved, 동시 제출 JUnit 테스트(대기열 없는 상태의 기준 측정) | 완료 (결과 전달은 폴링, STOMP는 실시간 기능 때) |
 | 7 | 대기열(동시 채점 수 제한) + Docker 호출 시간 제한, 동시 제출 테스트로 6단계 측정값과 비교 (배포 전 필수) | 예정 |
 | 8 | 부하 테스트 도구(k6 등, 사전 검토 후) 도입: 실제 서버에 가상 유저로 응답 시간 분포 측정 (배포 전) | 예정 |
