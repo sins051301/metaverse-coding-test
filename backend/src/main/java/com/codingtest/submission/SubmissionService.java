@@ -6,6 +6,7 @@ import com.codingtest.judge.SourceCodeRequest;
 import com.codingtest.judge.TestResultResponse;
 import com.codingtest.problem.ProblemService;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,6 +69,12 @@ public class SubmissionService {
 				problemService.getTestCaseOrder(submission.getProblemId()),
 				problemService.getExamples(submission.getProblemId()));
 		return SubmissionResponse.of(submission, tests);
+	}
+
+	@Transactional(readOnly = true)
+	public SubmissionHistoryResponse getHistory(long userId, long problemId, int page, int size) {
+		problemService.getProblem(problemId);
+		return SubmissionHistoryResponse.from(submissionRepository.findSummaries(userId, problemId, PageRequest.of(page, size)));
 	}
 
 	@Transactional(readOnly = true)
