@@ -1,4 +1,5 @@
 import { readStorage, writeStorage } from '@/shared/lib/storage'
+import { vars } from '@/shared/styles/theme.css'
 
 export const COATS = ['ginger', 'grey', 'black', 'white', 'siamese'] as const
 export type Coat = (typeof COATS)[number]
@@ -16,34 +17,34 @@ export type CoatPalette = {
 
 export const COAT_PALETTES: Record<Coat, CoatPalette> = {
   ginger: {
-    fur: '--cat-ginger',
-    furDark: '--cat-ginger-dark',
-    muzzle: '--cat-cream',
-    eye: '--cat-eye',
+    fur: vars.cat.ginger,
+    furDark: vars.cat.gingerDark,
+    muzzle: vars.cat.cream,
+    eye: vars.cat.eye,
   },
   grey: {
-    fur: '--cat-grey',
-    furDark: '--cat-grey-dark',
-    muzzle: '--cat-white',
-    eye: '--cat-eye',
+    fur: vars.cat.grey,
+    furDark: vars.cat.greyDark,
+    muzzle: vars.cat.white,
+    eye: vars.cat.eye,
   },
   black: {
-    fur: '--cat-black',
-    furDark: '--cat-black',
-    muzzle: '--cat-black-muzzle',
-    eye: '--cat-eye-gold',
+    fur: vars.cat.black,
+    furDark: vars.cat.black,
+    muzzle: vars.cat.blackMuzzle,
+    eye: vars.cat.eyeGold,
   },
   white: {
-    fur: '--cat-white',
-    furDark: '--cat-cream',
-    muzzle: '--cat-white',
-    eye: '--cat-eye',
+    fur: vars.cat.white,
+    furDark: vars.cat.cream,
+    muzzle: vars.cat.white,
+    eye: vars.cat.eye,
   },
   siamese: {
-    fur: '--cat-cream',
-    furDark: '--cat-brown',
-    muzzle: '--cat-brown',
-    eye: '--cat-eye',
+    fur: vars.cat.cream,
+    furDark: vars.cat.brown,
+    muzzle: vars.cat.brown,
+    eye: vars.cat.eye,
   },
 }
 

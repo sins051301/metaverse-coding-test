@@ -1,4 +1,5 @@
 import type { CoatPalette } from '@/entities/avatar/model/appearance'
+import { vars } from '@/shared/styles/theme.css'
 
 export const FRAME_SIZE = 16
 
@@ -185,10 +186,10 @@ export function drawCatSheet(
     w: resolveColor(palette.muzzle),
     e: resolveColor(palette.eye),
     c: resolveColor(
-      palette.furDark === palette.fur ? '--cat-grey-dark' : palette.furDark,
+      palette.furDark === palette.fur ? vars.cat.greyDark : palette.furDark,
     ),
-    p: resolveColor('--cat-ear'),
-    n: resolveColor('--cat-nose'),
+    p: resolveColor(vars.cat.ear),
+    n: resolveColor(vars.cat.nose),
   }
   context.clearRect(0, 0, SHEET_WIDTH, SHEET_HEIGHT)
   Object.entries(POSES).forEach(([pose, frameCount], row) => {

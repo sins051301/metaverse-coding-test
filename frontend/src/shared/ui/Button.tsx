@@ -1,29 +1,20 @@
 import type { ButtonHTMLAttributes } from 'react'
-import styles from './Button.module.css'
+import { button, type ButtonVariants } from './Button.css'
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'default' | 'primary' | 'quiet'
-  size?: 'medium' | 'small'
-}
-
-const VARIANT_CLASS = {
-  default: '',
-  primary: styles.primary,
-  quiet: styles.quiet,
-}
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & ButtonVariants
 
 export function Button({
-  variant = 'default',
-  size = 'medium',
+  variant,
+  size,
   className = '',
   type = 'button',
   ...rest
 }: ButtonProps) {
-  const classNames = [
-    styles.button,
-    VARIANT_CLASS[variant],
-    size === 'small' ? styles.small : '',
-    className,
-  ]
-  return <button type={type} className={classNames.join(' ')} {...rest} />
+  return (
+    <button
+      type={type}
+      className={`${button({ variant, size })} ${className}`.trim()}
+      {...rest}
+    />
+  )
 }
