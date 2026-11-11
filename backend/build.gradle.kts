@@ -25,6 +25,8 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-security")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
+	// 라운지 실시간 동기화: WebSocket + STOMP (Spring simple broker). 버전은 Spring Boot 가 관리한다.
+	implementation("org.springframework.boot:spring-boot-starter-websocket")
 	implementation("org.flywaydb:flyway-mysql")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
 	runtimeOnly("com.mysql:mysql-connector-j")

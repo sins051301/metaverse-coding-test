@@ -7,6 +7,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Optional;
 
 @Service
 public class UserService {
@@ -38,6 +39,12 @@ public class UserService {
 		User user = userRepository.findById(id)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "회원이 없습니다: " + id));
 		return new UserResponse(user.getId(), user.getNickname(), user.getEmail(), userSolvedProblemRepository.countByIdUserId(id));
+	}
+
+	// 라운지 이름표에 쓴다. 토큰은 유효한데 회원이 지워졌으면 비어 있다
+	@Transactional(readOnly = true)
+	public Optional<String> findNickname(long id) {
+		return userRepository.findById(id).map(User::getNickname);
 	}
 
 	private String uniqueNickname() {

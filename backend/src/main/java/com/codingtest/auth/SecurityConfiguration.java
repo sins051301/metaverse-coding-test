@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 public class SecurityConfiguration {
 
 	private static final int MINIMUM_SECRET_BYTES = 32;
+	private static final String LOUNGE_WEB_SOCKET_PATH = "/ws";
 
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http, LoginSuccessHandler loginSuccessHandler, BearerTokenResolver bearerTokenResolver) {
@@ -36,6 +37,8 @@ public class SecurityConfiguration {
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(HttpMethod.GET, "/api/problems", "/api/problems/*").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
+						// 라운지 WebSocket. 게스트도 들어와야 하고, 신원은 LoungeHandshakeHandler 가 쿠키로 직접 정한다
+						.requestMatchers(LOUNGE_WEB_SOCKET_PATH).permitAll()
 						.requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/error").permitAll()
 						.anyRequest().authenticated())
 				.oauth2Login(login -> login.successHandler(loginSuccessHandler))
@@ -51,11 +54,17 @@ public class SecurityConfiguration {
 	/**
 	 * 토큰을 Authorization 헤더에서 먼저 찾고, 없으면 accessToken 쿠키에서 찾는다.
 	 * 브라우저(프론트엔드)는 HttpOnly 쿠키로, Swagger 와 테스트는 헤더(Authorize 버튼)로 보낸다.
+	 *
+	 * <p>라운지 WebSocket(/ws)에서는 찾지 않는다. 여기서 토큰을 돌려주면 만료된 쿠키가 남은 사람은 permitAll 이어도 검증 실패로 401 이 되어
+	 * 게스트로도 들어오지 못한다. /ws 의 신원은 LoungeHandshakeHandler 가 쿠키를 직접 확인해 정하고, 틀린 쿠키는 게스트로 받는다.
 	 */
 	@Bean
 	BearerTokenResolver bearerTokenResolver(AccessTokenCookie accessTokenCookie) {
 		DefaultBearerTokenResolver headerResolver = new DefaultBearerTokenResolver();
 		return request -> {
+			if (LOUNGE_WEB_SOCKET_PATH.equals(request.getRequestURI())) {
+				return null;
+			}
 			String headerToken = headerResolver.resolve(request);
 			return headerToken != null ? headerToken : accessTokenCookie.read(request).orElse(null);
 		};
