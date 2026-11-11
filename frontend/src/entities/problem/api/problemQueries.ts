@@ -6,6 +6,7 @@ export type ProblemSummary = {
   id: number
   title: string
   level: number
+  solved: boolean
 }
 
 export type ProblemParameter = {
@@ -22,9 +23,11 @@ export type ProblemDetail = ProblemSummary & {
   starterCode: Record<Language, string>
 }
 
+export const PROBLEM_LIST_QUERY_KEY = ['problems']
+
 export function problemListQuery() {
   return queryOptions({
-    queryKey: ['problems'],
+    queryKey: PROBLEM_LIST_QUERY_KEY,
     queryFn: () => request<ProblemSummary[]>('/api/problems'),
     staleTime: Infinity,
   })

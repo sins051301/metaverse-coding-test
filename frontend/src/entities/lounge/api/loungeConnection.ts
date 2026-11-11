@@ -23,6 +23,8 @@ type Position = { x: number; y: number; direction: Direction }
 
 let client: Client | null = null
 let stopConnection = () => {}
+const deskListeners = new Set<(message: IMessage) => void>()
+const connectedListeners = new Set<() => void>()
 let lastPosition: Position | null = null
 let lastSentAt = 0
 let lastSentMoving = false
@@ -99,6 +101,7 @@ function onPersonal(message: IMessage) {
     if (seatedDeskId !== null && me?.deskId === null) {
       moveToFreeDesk()
     }
+    connectedListeners.forEach((listener) => listener())
     return
   }
   if (personal.deskId === loungeStore.getState().seatedDeskId) {
@@ -153,6 +156,9 @@ export const loungeConnection = {
         rosterStore.reset(true)
         created.subscribe('/topic/lounge', onEvent)
         created.subscribe('/user/queue/lounge', onPersonal)
+        created.subscribe('/user/queue/desk', (message) =>
+          deskListeners.forEach((listener) => listener(message)),
+        )
         join()
       },
       onWebSocketClose: () => {
@@ -194,6 +200,26 @@ export const loungeConnection = {
     lastSentMoving = moving
     const request: MoveRequest = { ...position, moving }
     publish('/app/lounge/move', request)
+  },
+  isReady() {
+    return (
+      client?.connected === true && rosterStore.getState().myAvatarId !== null
+    )
+  },
+  send(destination: string, body: object = {}) {
+    publish(destination, body)
+  },
+  onDeskMessage(listener: (message: IMessage) => void) {
+    deskListeners.add(listener)
+    return () => {
+      deskListeners.delete(listener)
+    }
+  },
+  onJoined(listener: () => void) {
+    connectedListeners.add(listener)
+    return () => {
+      connectedListeners.delete(listener)
+    }
   },
   requestSit(deskId: number) {
     if (client?.connected && rosterStore.getState().myAvatarId !== null) {
