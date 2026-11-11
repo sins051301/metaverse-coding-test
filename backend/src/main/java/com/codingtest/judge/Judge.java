@@ -43,8 +43,8 @@ public class Judge {
 			TestRunResult run = sandboxResult.testResults().get(index);
 			Verdict verdict = classify(run, testCase.getExpected());
 			judgements.add(testCase.isHidden()
-					? new TestJudgement(index + 1, true, verdict, run.timeSeconds(), run.memoryKb(), null, null, null, null, null)
-					: new TestJudgement(index + 1, false, verdict, run.timeSeconds(), run.memoryKb(),
+					? new TestJudgement(index + 1, testCase.getId(), true, verdict, run.timeSeconds(), run.memoryKb(), null, null, null, null, null)
+					: new TestJudgement(index + 1, testCase.getId(), false, verdict, run.timeSeconds(), run.memoryKb(),
 							testCase.getInput(), testCase.getExpected(), run.returnValue(), run.userOutput(), run.stderr()));
 		}
 		Verdict overall = judgements.stream()

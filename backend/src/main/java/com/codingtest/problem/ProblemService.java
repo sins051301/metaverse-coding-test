@@ -37,4 +37,12 @@ public class ProblemService {
 		return testCaseRepository.findByProblemIdOrderByHiddenAscSequenceAsc(problemId);
 	}
 
+	public List<TestCaseOrder> getTestCaseOrder(long problemId) {
+		return testCaseRepository.findOrderByProblemId(problemId);
+	}
+
+	public List<TestCase> getExamples(long problemId) {
+		return testCaseRepository.findByProblemIdAndHiddenFalseOrderBySequenceAsc(problemId);
+	}
+
 }

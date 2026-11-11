@@ -59,8 +59,8 @@ class JudgeRulesTest {
 	@Test
 	@DisplayName("점수는 통과 비율을 소수 첫째 자리까지 반올림한다")
 	void scoresByPassedRatio() {
-		TestJudgement passed = new TestJudgement(1, true, Verdict.AC, 0, 0, null, null, null, null, null);
-		TestJudgement failed = new TestJudgement(2, true, Verdict.WA, 0, 0, null, null, null, null, null);
+		TestJudgement passed = new TestJudgement(1, 1, true, Verdict.AC, 0, 0, null, null, null, null, null);
+		TestJudgement failed = new TestJudgement(2, 2, true, Verdict.WA, 0, 0, null, null, null, null, null);
 
 		assertThat(new JudgeResult(Verdict.WA, "", List.of(passed, passed, failed)).score()).isEqualTo(66.7);
 		assertThat(new JudgeResult(Verdict.AC, "", List.of(passed)).score()).isEqualTo(100.0);

@@ -8,6 +8,8 @@ import tools.jackson.databind.JsonNode;
  */
 public record TestJudgement(
 		int testNumber,
+		// 결과를 DB(submission_test_results, run_test_results)에 저장할 때 PK 로 쓴다.
+		long testCaseId,
 		boolean hidden,
 		Verdict verdict,
 		double timeSeconds,
