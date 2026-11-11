@@ -10,6 +10,7 @@ import {
 } from '@/entities/judge/api/judgeApi'
 import type { RunResult, SubmissionResult } from '@/entities/judge/model/types'
 import { loungeStore } from '@/entities/lounge/model/loungeStore'
+import { PROBLEM_LIST_QUERY_KEY } from '@/entities/problem/api/problemQueries'
 import { CURRENT_USER_QUERY_KEY } from '@/entities/user/api/userQueries'
 import { isHttpError } from '@/shared/api/httpClient'
 
@@ -50,10 +51,16 @@ export function useJudge(problemId: number) {
       ? submission.data.verdict
       : null
   useEffect(() => {
-    if (submittedVerdict !== null && submittedVerdict !== 'AC') {
+    if (submittedVerdict === 'AC') {
+      void queryClient.invalidateQueries({
+        queryKey: PROBLEM_LIST_QUERY_KEY,
+        exact: true,
+      })
+      void queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY })
+    } else if (submittedVerdict !== null) {
       loungeStore.flashFailure()
     }
-  }, [jobId, submittedVerdict])
+  }, [jobId, submittedVerdict, queryClient])
 
   function judge(nextMode: JudgeMode, source: SourceCode) {
     setMode(nextMode)
