@@ -60,6 +60,9 @@ export function ProblemListPage() {
               <Link to={`/problems/${problem.id}`} className={styles.row}>
                 <span className={styles.number}>{problem.id}</span>
                 <span className={styles.problemTitle}>{problem.title}</span>
+                {problem.solved ? (
+                  <span className={styles.done}>완료</span>
+                ) : null}
                 <span className={styles.level}>Lv. {problem.level}</span>
               </Link>
             </li>

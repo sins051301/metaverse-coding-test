@@ -98,3 +98,12 @@ export const level = style({
   color: vars.color.cardMuted,
   fontWeight: '700',
 })
+
+export const done = style({
+  padding: `0 ${vars.space.xs}`,
+  borderRadius: vars.radius.pill,
+  background: vars.color.ok,
+  color: vars.color.tagInk,
+  fontSize: vars.text.xs,
+  fontWeight: '700',
+})

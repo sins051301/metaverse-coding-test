@@ -14,12 +14,14 @@ import * as styles from './LoungeLayout.css'
 
 export const LOUNGE_PATH = '/'
 export const PROBLEM_LIST_PATH = '/problems'
+export const SPECTATE_PATH = '/spectate'
 
 export function LoungeLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const view = location.pathname === LOUNGE_PATH ? 'lounge' : 'panel'
-  const { seatedDeskId } = useLoungeState()
+  const spectating = location.pathname.startsWith(SPECTATE_PATH)
+  const { seatedDeskId, spectateRequest } = useLoungeState()
   const previous = useRef<{ view: string; seatedDeskId: number | null } | null>(
     null,
   )
@@ -40,7 +42,12 @@ export function LoungeLayout() {
       navigate(LOUNGE_PATH)
     } else if (viewChanged && view === 'lounge' && seatedDeskId !== null) {
       loungeStore.stand()
-    } else if (viewChanged && view === 'panel' && seatedDeskId === null) {
+    } else if (
+      viewChanged &&
+      view === 'panel' &&
+      seatedDeskId === null &&
+      !spectating
+    ) {
       const freeDesk = firstFreeDesk()
       if (freeDesk === null) {
         navigate(LOUNGE_PATH)
@@ -48,7 +55,14 @@ export function LoungeLayout() {
         loungeStore.sit(freeDesk)
       }
     }
-  }, [view, seatedDeskId, navigate])
+  }, [view, seatedDeskId, spectating, navigate])
+
+  useEffect(() => {
+    if (spectateRequest !== null) {
+      loungeStore.requestSpectate(null)
+      navigate(`${SPECTATE_PATH}/${spectateRequest}`)
+    }
+  }, [spectateRequest, navigate])
 
   useEffect(() => {
     loungeConnection.start()

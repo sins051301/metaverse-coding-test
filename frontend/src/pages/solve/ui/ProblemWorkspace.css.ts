@@ -157,3 +157,10 @@ export const actionBar = style({
   gap: vars.space.xs,
   paddingInline: vars.space.xs,
 })
+
+export const spectators = style({
+  marginLeft: 'auto',
+  color: vars.color.cardMuted,
+  fontSize: vars.text.xs,
+  fontWeight: '700',
+})

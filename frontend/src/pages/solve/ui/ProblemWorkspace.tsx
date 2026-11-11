@@ -10,6 +10,7 @@ import { activityTracker } from '@/entities/lounge/model/activityTracker'
 import { loadDraft, saveDraft } from '@/features/edit-code/model/codeDraft'
 import { ResetCodeButton } from '@/features/edit-code/ui/ResetCodeButton'
 import { useJudge } from '@/features/judge-code/model/useJudge'
+import { useCodeSharing } from '@/features/share-code/model/useCodeSharing'
 import {
   LANGUAGE_ORDER,
   LANGUAGES,
@@ -40,6 +41,9 @@ export function ProblemWorkspace({
 }: ProblemWorkspaceProps) {
   const { data: problem, isError } = useQuery(problemDetailQuery(problemId))
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+  const [codeEditor, setCodeEditor] =
+    useState<editor.IStandaloneCodeEditor | null>(null)
+  const spectatorCount = useCodeSharing(codeEditor, problemId, language)
   const { view, isJudging, judge } = useJudge(problemId)
   const [showHistory, setShowHistory] = useState(false)
 
@@ -120,7 +124,14 @@ export function ProblemWorkspace({
           <Group orientation="vertical">
             <Panel id="editor" minSize={160}>
               <div className={styles.editorCard}>
-                <div className={styles.editorHead}>{fileName}</div>
+                <div className={styles.editorHead}>
+                  {fileName}
+                  {spectatorCount > 0 ? (
+                    <span className={styles.spectators}>
+                      {spectatorCount}명이 구경하고 있어요
+                    </span>
+                  ) : null}
+                </div>
                 <div className={styles.editorBody}>
                   <Suspense
                     fallback={
@@ -139,8 +150,9 @@ export function ProblemWorkspace({
                         saveDraft(problemId, language, code)
                         activityTracker.touch()
                       }}
-                      onMount={(codeEditor) => {
-                        editorRef.current = codeEditor
+                      onMount={(mounted) => {
+                        editorRef.current = mounted
+                        setCodeEditor(mounted)
                       }}
                     />
                   </Suspense>
