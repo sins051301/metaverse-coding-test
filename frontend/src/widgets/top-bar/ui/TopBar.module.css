@@ -1,0 +1,45 @@
+.topBar {
+  height: 56px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding-inline: var(--space-lg);
+  border-bottom: var(--rule-bar) solid var(--color-rule);
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-display);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.me {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.nickname {
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-bubble);
+  background: var(--color-paper-2);
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+.figure {
+  margin-right: var(--space-3xs);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-md);
+  color: var(--color-ink);
+}
