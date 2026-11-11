@@ -33,7 +33,7 @@
 |---|---|
 | 사용자 식별 | 게스트로 시작(localStorage의 임시 UUID + `익명_XXXX` 닉네임). 메인 화면에서 직접 로그인도 가능 |
 | 로그인 요구 시점 | **[코드 실행]**(예제만 실행), **[제출 및 채점]**, **[1:1 페어 요청]** 시 Google OAuth 팝업 (Lazy Auth). 채점 서버를 쓰는 동작은 모두 로그인 필요 |
-| 로그인 방식 | Google 로그인 성공 → `users`를 Google 계정 ID(`sub`)로 찾거나 생성 → 우리 서버 JWT 발급. 토큰은 `Authorization: Bearer` 헤더(쿠키 아님: CSRF 대응 불필요, Swagger·STOMP에서 쓰기 쉬움). HS256 서명(서버 하나라 비밀키 하나로 충분). 액세스 토큰 24시간, 리프레시 토큰 없음(만료 시 재로그인, 보안 강화 때 도입). 로그인 과정의 세션은 Google state 검증에만 쓰고 바로 폐기 |
+| 로그인 방식 | Google 로그인 성공 → `users`를 Google 계정 ID(`sub`)로 찾거나 생성 → 우리 서버 JWT 발급. 토큰은 **HttpOnly 쿠키**로 심고(4장 "인증"), Swagger·테스트용으로 `Authorization: Bearer` 헤더도 받는다. 처음에는 헤더만 쓰기로 했다가 프론트 연결 때 쿠키로 바꿈(자바스크립트가 토큰을 읽지 못해 XSS로 탈취 불가, WebSocket 연결에도 자동으로 붙음). HS256 서명(서버 하나라 비밀키 하나로 충분). 액세스 토큰 24시간, 리프레시 토큰 없음(만료 시 재로그인, 보안 강화 때 도입). 로그인 과정의 세션은 Google state 검증에만 쓰고 바로 폐기 |
 | 첫 로그인 닉네임 | `사용자_XXXXXX` 자동 생성 (겹치면 다시 생성, Google 실명 노출 방지). 닉네임 변경 API는 나중에 |
 | 비밀값 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `JWT_SECRET`(32바이트 이상)은 환경 변수로만 받음. 공개 레포라 레포에 넣지 않으며, 없으면 서버가 시작하지 않음 |
 | 비로그인 허용 영역 | 맵 입장, 아바타 이동, 문제 지문 조회, 에디터에서 코드 작성해 보기 |
@@ -145,14 +145,14 @@ MVP 이후 공용 맵·관전 구조 위에 확장한다 (MVP 설계 변경 불�
 | DB | **MySQL 8.4** + **Flyway 12** | 관계(FK)·트랜잭션·집계가 중심인 데이터라 RDB. 스키마와 seed 데이터를 번호 붙은 SQL 파일로 관리해 로컬·테스트·배포 DB가 같은 순서로 같은 변경을 받음. CHECK·JSON·복합 PK는 엔티티보다 SQL로 정확히 표현 |
 | DB 접근 | **Spring Data JPA** (Hibernate 7) | 고정 조회가 대부분이라 Repository 메서드로 충분. `@ManyToOne`은 항상 LAZY (관계를 따라 연쇄 조회가 퍼지는 것을 막고, 같이 읽을 때만 fetch join / `@EntityGraph`) |
 | QueryDSL | **MVP 제외** | MVP 조회는 고정 쿼리라 Spring Data JPA/JPQL로 충분. 동적 필터가 생기면 관리되는 `io.github.openfeign.querydsl` 포크로 도입 |
-| 실시간 | STOMP (Spring simple broker) | (예정) 아바타 위치·상태·이펙트·채점 결과 알림 브로드캐스트 |
+| 실시간 | STOMP (Spring simple broker) | (2단계 예정) 아바타 위치·상태·이펙트·채점 결과 알림 브로드캐스트. 연결할 때 HttpOnly 쿠키로 신원 확인, 메시지는 연결에 붙은 신원만 믿음, 게스트는 연결마다 서버가 id 발급, 위치는 최대 100ms 간격 (10장) |
 | 동시 편집 | Yjs + `y-monaco` | (예정) 병합은 클라이언트 CRDT가 하고 서버는 중계만. 중계 위치(Spring 릴레이 vs Node `y-websocket`)는 페어 기능 구현 때 결정 |
 | 인증 | **Spring Security 7** OAuth2 Client(Google 로그인) + OAuth2 Resource Server(JWT 검증, 내장 Nimbus) | 별도 JWT 라이브러리(jjwt) 없이 발급·검증. 토큰은 **HttpOnly 쿠키**(`SameSite=Lax`)로 심어 프론트 자바스크립트가 읽지 못하게 함(XSS로 토큰 탈취 불가). 서버는 `Authorization` 헤더를 먼저, 없으면 쿠키를 읽음(`BearerTokenResolver`). CSRF는 `SameSite=Lax`가 다른 사이트의 POST에 쿠키를 붙이지 않는 것으로 막음 |
 | 채점 | **Docker + docker-java 3.7.1** | 제출마다 격리 컨테이너 생성. CLI 호출보다 종료 코드·OOM 등을 구조화된 값으로 받을 수 있다 |
 | API 문서 | **springdoc-openapi 3.2.0** (Swagger UI) | 컨트롤러에서 API 문서가 자동으로 만들어지고 브라우저에서 바로 요청을 보내 볼 수 있음. Spring Boot 4.1.2 기준 빌드 |
 | 테스트 | JUnit 5, AssertJ, **Testcontainers 2** | 샌드박스와 DB는 실제 Docker 컨테이너를 띄우는 통합 테스트(`judgeTest`) |
 | 기타 | Lombok(JPA 엔티티 한정), DTO는 `record` | |
-| 프론트엔드 | React, Phaser.js, Monaco Editor | (예정) 맵은 2D 탑다운이라 타일맵·충돌·입력이 내장된 Phaser 추천(3D·PixiJS 비교는 `docs/ui-design.md` 5장). 버전·React 연결 방식은 구현 전 검토 |
+| 라운지 지도 | **Phaser 4.2.1** (2D 게임 프레임워크) | 게임 루프·스프라이트 애니메이션·충돌·키 입력·카메라가 내장. 3.x는 2025-05의 3.90이 마지막이라 현재 안정판인 4를 고름. 3D·PixiJS 비교는 `docs/ui-design.md` 5장, React 연결 방식은 10장 |
 | 프론트 기반 | **Vite 8 + React 19 + TypeScript 7**, pnpm, CSS Modules + CSS 변수 토큰, oxlint + Prettier, FSD | CRA는 지원 종료, Next.js의 SSR은 Phaser·Monaco처럼 브라우저 전용 앱에 이득이 없음. 디자인 토큰이 이미 CSS 변수라 Tailwind 없이 그대로 옮김. 코드 규칙은 `.claude/skills/react-best-practices`(Vercel, Next.js 전용 `server-` 규칙 제외). barrel 파일(`index.ts` 재수출)은 두지 않고 FSD 슬라이스도 파일을 직접 경로로 import |
 | 풀이 화면 | **@monaco-editor/react + monaco-editor**(CDN 대신 설치한 패키지, `React.lazy`로 늦게 로드), react-markdown + remark-gfm, react-resizable-panels, **TanStack Query**, React Router | 실행·제출은 접수(202) 후 결과를 1초마다 폴링 → TanStack Query `refetchInterval`이 `DONE`·`FAILED`에서 멈춤. 코드는 React 상태에 두지 않고 실행·제출 순간에만 에디터에서 읽어 타이핑 중 재렌더가 없음. 작성 중 코드는 문제·언어별로 localStorage |
 
@@ -177,7 +177,8 @@ coding-test/
 │  ├─ src/main/resources/db/migration/   Flyway: V1 테이블 생성, V2 seed 문제 5개
 │  └─ src/test/resources/problems/{id}-{slug}/   검증용 코드: accepted(AC) / wrong(WA) / slow(TLE) .java .js
 ├─ frontend/                     React + Vite (dev 서버 3000, /api → 8080 프록시)
-│  └─ src/                       FSD: app(진입점·전역 스타일·테마 토큰) / pages / widgets / features / entities / shared
+│  ├─ public/assets/             CC0 에셋 (출처·라이선스는 CREDITS.md)
+│  └─ src/                       FSD: app(진입점·공통 레이아웃·전역 스타일·테마 토큰) / pages / widgets(lounge-map 등) / features / entities(avatar, lounge 등) / shared
 └─ docker/
    └─ judge/                     채점 이미지
       ├─ java.Dockerfile         → coding-test/judge-java       (eclipse-temurin:25-jdk-noble)
@@ -581,3 +582,182 @@ JPA 매핑은 `JsonNodeConverter`로 문자열 ↔ `JsonNode` 변환 (Hibernate 
 | 6 | Google OAuth + JWT, 제출 API(`submissions` 저장·조회) + 실행 기록 저장(`runs`) + 비동기 채점 + 결과 전달(조회 API 또는 STOMP 푸시), `user_solved_problems`/Total Solved, 동시 제출 JUnit 테스트(대기열 없는 상태의 기준 측정) | 완료 (결과 전달은 폴링, STOMP는 실시간 기능 때) |
 | 7 | 동시 채점 수 제한(세마포어) + 접수 제한(대기열 상한·유저별 진행 중 개수) + Docker 호출 시간 제한, 동시 제출 테스트로 6단계 측정값과 비교 (7장 "부하 제한") | 완료 (값은 임시, `docs/tuning.md`) |
 | 8 | 부하 테스트 도구(k6 등, 사전 검토 후) 도입: 실제 서버에 가상 유저로 응답 시간 분포 측정 (배포 전) | 예정 |
+| 라운지 1 | 라운지 혼자 걷기: Phaser 지도, 도트 고양이(4방향 걷기·앉기), 충돌, 책상 앞 `[F]` 앉기 → 문제 선택, ESC·[일어나기], 화면을 옮겨도 지도 유지 (10장) | 완료 |
+| 라운지 2 | 여러 명 동기화: STOMP, 접속·퇴장, 위치·상태 방송, 접속자 수, 책상 점유, 게스트 신원 (10장 "2단계") | 완료 (브라우저 탭 두 개로 입장·이동·책상 점유·퇴장 확인) |
+
+---
+
+## 10. 라운지(메타버스) 설계
+
+### 흐름
+```
+라운지(/)에서 WASD·방향키로 걷기
+ → 빈 책상 앞(앞판 아래 10도트 안)에 서면 [F] 책상에 앉기 툴팁
+ → F: 앉음 (노트북 화면이 켜짐) → 문제 선택(/problems), 지도는 왼쪽 280px 패널로 줄고 내 고양이를 가운데에 둠
+ → 문제 클릭 → 풀이(/problems/1)에서도 같은 지도가 그대로
+ → ESC 또는 [일어나기] → 책상 앞에 서서 라운지로
+```
+- 앉은 적 없이 문제 주소로 바로 들어오면(새 탭, 링크) 가운데 책상(7번)에 앉힌다.
+- 브라우저 뒤로 가기로 라운지에 돌아오면 일어난다.
+- 앉은 책상은 탭 단위(sessionStorage)로, 서 있던 자리와 털색은 브라우저 단위(localStorage)로 기억한다. 로그인하러 떠났다 와도 같은 자리에 선다.
+
+### 구조
+| 무엇 | 위치 | 하는 일 |
+|---|---|---|
+| 공통 레이아웃 | `app/layouts/LoungeLayout.tsx` | 상단 바 + 지도 + 자식 화면(`Outlet`). 주소와 "앉아 있는가"를 맞춤 |
+| 지도 자리 | `widgets/lounge-map/ui/LoungeMapArea.tsx` | 라운지 = 가운데 전체, 앉은 화면 = 왼쪽 패널(접기, [일어나기], ESC) |
+| 캔버스 + 툴팁 | `widgets/lounge-map/ui/LoungeMap.tsx` | Phaser 게임을 한 번만 만들고(동적 import), 그 위에 React로 `[F]` 툴팁 |
+| 장면 | `widgets/lounge-map/lib/LoungeScene.ts` | 방·책상·장식 배치, 이동·충돌, 근처 책상 찾기, 앉기·일어나기, 카메라 |
+| 지도 데이터 | `widgets/lounge-map/model/loungeMap.ts` | 320x180 도트, 책상 15개(3줄 x 5), 창문·전광판·러그·장식 좌표 |
+| 고양이 도트 | `entities/avatar/lib/catSprite.ts` | 도트 템플릿 → 스프라이트 시트. 털색은 팔레트만 바꿈 |
+| 외형 | `entities/avatar/model/appearance.ts` | `{ coat }`. 꾸미기 아이템이 생기면 칸을 늘림 |
+| 공유 상태 | `entities/lounge/model/loungeStore.ts` | 화면 모드, 근처 책상, 앉은 책상, 지도 접힘 |
+
+### 공부할 개념
+
+**1. 게임 루프와 React의 역할 나누기**
+- 게임은 1초에 약 60번 "입력 읽기 → 위치 옮기기 → 충돌 검사 → 다시 그리기"를 반복한다(게임 루프). Phaser 장면의 `update()`가 매 프레임 불린다.
+- React는 상태가 바뀔 때 다시 그리는 방식이라 1초에 60번 리렌더하면 무겁다. 그래서 **고양이 좌표처럼 매 프레임 바뀌는 값은 Phaser 안에만** 두고, React는 가끔 바뀌는 값(근처 책상, 앉은 책상)만 본다.
+- 맵은 Phaser가 캔버스에 직접 그리고, 상단 바·툴팁·버튼·에디터는 React가 그린다.
+
+**2. 외부 저장소와 `useSyncExternalStore`**
+- `loungeStore`는 React 바깥의 작은 저장소다(`getState`, `subscribe`, 값을 바꾸는 함수들). Phaser도 React도 이것만 읽고 쓴다. 서로를 직접 부르지 않아서, 한쪽을 바꿔도 다른 쪽이 덜 깨진다.
+- React는 `useSyncExternalStore(subscribe, getState)`로 구독한다. React 18의 동시성 렌더링에서 한 번의 렌더 안에 컴포넌트마다 다른 값을 보는 문제(tearing)를 막아 준다. Redux·Zustand도 안에서 이 훅을 쓴다.
+- 흐름 예: 고양이가 책상 앞에 섬 → 장면이 `setNearbyDesk({deskId: 7, ...})` → 저장소가 구독자에게 알림 → React 툴팁이 뜸 → F → 장면이 `sit(7)` → 레이아웃이 보고 `/problems`로 이동 → 장면도 같은 알림을 받아 고양이를 앉힘.
+
+**3. 화면을 옮겨도 게임을 유지하기 (레이아웃 라우트)**
+- React Router의 레이아웃 라우트: 부모 라우트(`/`, `LoungeLayout`)가 자식 화면(`/problems`, `/problems/:id`)을 `Outlet` 자리에 바꿔 끼운다. 부모 안의 지도는 화면이 바뀌어도 사라지지 않는다.
+- 페이지마다 게임을 만들고 지우면 그때마다 에셋을 다시 읽고(2단계에서는 연결도 다시 맺고) 앉아 있던 고양이도 다시 생긴다. 캔버스 DOM을 다른 상자로 옮겨 붙이는 방법은 React가 모르는 DOM 조작이라 버그가 나기 쉽다.
+- 주의: React는 자식을 **순서**로 맞춰 본다. 지도 앞의 조건부 요소를 `조건 ? <요소> : null`로 두면 빈 자리(`null`)가 남아 지도가 늘 같은 순서에 있다. 순서가 바뀌면 React가 지도를 새로 만들어 게임이 다시 시작된다 (`LoungeMapArea` 주석).
+- 크기만 CSS로 바뀌고, Phaser의 `Scale.RESIZE`가 상자 크기에 맞춰 캔버스를 다시 맞춘다. 접으면 `game.loop.sleep()`으로 그리기를 멈춘다.
+- 개발 모드의 StrictMode는 효과(`useEffect`)를 한 번 지웠다가 다시 실행한다. 지울 때 `game.destroy(true)`를 하지 않으면 캔버스가 두 개 생긴다.
+
+**4. 동적 import로 번들 나누기**
+- `LoungeMap`이 `import('.../startLoungeGame')`으로 Phaser를 부른다. Vite가 Phaser(약 1.3MB)를 별도 파일로 떼어 내서, 지도가 처음 뜰 때만 내려받는다. 정적 `import Phaser`는 이 파일과 장면 파일에만 있다.
+
+**5. 도트 그림: 정수배 확대와 `pixelArt`**
+- 지도는 320x180 도트로 그리고 카메라 `zoom`으로 키운다. 라운지는 "방 전체가 들어가는 가장 큰 정수배", 패널은 2배. 정수배여야 도트 하나가 화면 픽셀 n x n으로 고르게 커진다(3.5배면 어떤 도트는 3칸, 어떤 도트는 4칸이 된다).
+- `pixelArt: true`: 확대할 때 주변 색을 섞지 않고 가장 가까운 픽셀을 그대로 쓴다(nearest-neighbor). 이게 없으면 도트가 뿌옇게 번진다.
+- 이름표 글자는 `setResolution(zoom × devicePixelRatio)`로 미리 촘촘하게 그려 둔다. 그대로 키우면 글자가 깍두기처럼 깨진다.
+
+**6. 탑다운의 앞뒤 순서 (y-정렬)**
+- 위에서 내려다보는 화면에서는 **발이 아래(y가 큰) 쪽에 있는 것이 앞**이다. 고양이와 책상·장식의 depth를 "발(바닥에 닿는 곳)의 y"로 매긴다.
+- 그래서 고양이 위치(Container의 원점)를 발에 두고, 부딪히는 몸통도 발밑 8x4만 둔다. 머리는 책상이나 화분 뒤로 자연스럽게 지나간다.
+- 앉은 고양이는 상반신과 앞발만 그린 프레임을 책상보다 앞에 둔다. 아래 몸이 시트에 없으니 책상에 가려진 것처럼 보이고, 앞발은 책상 위에 얹힌다.
+
+**7. 간단 물리 (Arcade Physics)**
+- 벽·책상·장식은 움직이지 않는 몸통(static body), 고양이는 움직이는 몸통이다. `collider`가 둘이 겹치지 않게 밀어낸다.
+- 대각선 이동은 x, y 속도를 그대로 더하면 √2배 빨라진다. 방향 벡터의 길이를 1로 맞춘 뒤 속도를 곱한다.
+
+**8. 같은 템플릿 + 팔레트 = 털색 (나중에 꾸미기)**
+- 고양이는 글자 격자 템플릿(`f` 털, `w` 주둥이, `e` 눈 ...)으로 그리고, 글자마다 어떤 색 토큰을 쓸지를 털색별 팔레트로 정한다. 그림 하나로 털색 5종이 나온다. Phaser의 `tint`(색 곱하기)는 한 가지 색만 입힐 수 있어서 치즈 털 + 크림색 주둥이 같은 여러 색 무늬를 못 만든다.
+- 시트 배치 규칙(줄 = 자세, 칸 = 프레임, 칸 16x16, 발은 칸 아래 가운데)만 지키면 그림을 더 자세히 그려도 게임 코드는 그대로다.
+- 고양이는 처음부터 레이어 묶음(`Container`)이다. 모자·안경을 같은 칸 격자로 그려 더하면 꾸미기가 된다. 외형은 `{ coat }` 같은 데이터라 2단계에서 다른 사람에게도 그대로 보낼 수 있다.
+- 색은 `tokens.css`의 `--map-*`, `--cat-*`에서 읽는다. 캔버스 `fillStyle`은 `oklch(...)` 문자열을 그대로 받는다. 지도와 IDE가 같은 팔레트라 한 공간처럼 보인다.
+
+**9. 키 입력과 입력칸**
+- Phaser 키에 `enableCapture: false`를 줬다. 켜 두면 Phaser가 W·A·S·D·F의 기본 동작을 막아서 에디터·입력칸에 그 글자를 칠 수 없다.
+- 고양이는 라운지 화면이고, 서 있고, 입력칸에 포커스가 없을 때만 움직인다. ESC도 입력칸·에디터 밖에서만 [일어나기]로 쓴다(Monaco가 자동 완성 닫기에 ESC를 먼저 쓴다).
+
+### 선택과 이유
+| 항목 | 선택 | 이유 (대안) |
+|---|---|---|
+| React 연결 | 공통 레이아웃에 지도 고정 + 외부 저장소 | 페이지마다 생성·제거(재로딩·재연결), 캔버스 옮겨 붙이기(React 밖 DOM 조작) |
+| 지도 정의 | 코드 데이터(`loungeMap.ts`) | 방 하나·책상 15개라 Tiled 편집기 없이 파일 하나로 보인다. 방이 늘면 Tiled JSON |
+| 바닥·벽·책상·노트북 | 직접 그림 (목업 도트, 테마 토큰 색) | Kenney 실내 팩에 바닥·벽·노트북이 없고, 목업의 차콜·나무 팔레트와 맞춰야 함 |
+| 장식 | Kenney Roguelike Indoors (CC0) 화분·선반 | 출처 표기 의무 없음, 상업 이용 가능. `frontend/public/assets/CREDITS.md` |
+| 고양이 | 직접 그림 (목업 10x10 도트, 4방향·앉기) | 위에서 본 4방향 걷기가 있는 CC0 고양이를 찾지 못함 (옆모습뿐이거나 유료) |
+| 털색 | 템플릿 + 팔레트 교체 | `tint`는 한 색만 입힘 |
+| 이동 속도·애니메이션 | 초당 45도트, 걷기 초당 4칸 | 화면(4배)에서 초당 약 180px. 임시값 (`docs/tuning.md`) |
+
+### 한계 (다음에 고칠 것)
+- 이름표가 둥근 알약이 아니라 네모 배경이다(Phaser `Text`의 배경). 목업처럼 둥글게 하려면 캔버스 텍스처로 직접 그린다.
+- 패널 아래 빈 자리는 2단계 "옆자리" 목록(누가 작성 중인지) 자리다.
+
+### 2단계: 여러 명 동기화 (STOMP)
+
+#### 흐름
+```
+라운지를 열면 ws://(같은 주소)/ws 로 WebSocket 연결 (Vite 가 8080 으로 넘김, 로그인 쿠키가 자동으로 붙음)
+ → 서버가 핸드셰이크에서 신원을 정함: 쿠키가 맞으면 회원(DB 닉네임), 없거나 틀리면 게스트
+ → 구독 2개: /topic/lounge (모두에게 방송), /user/queue/lounge (나에게만)
+ → /app/lounge/join (위치·털색·게스트 닉네임·앉은 책상)
+   → 나에게 snapshot(지금 있는 모두 + 내 아바타 id), 다른 사람에게 joined
+ → 걸으면 /app/lounge/move (최대 100ms에 한 번 + 멈출 때 한 번) → 모두에게 moved
+ → F → /app/lounge/sit → 비어 있으면 모두에게 sat(그때 실제로 앉음), 차 있으면 나에게 sit-rejected
+ → ESC → /app/lounge/stand → stood
+ → 탭을 닫으면 연결 끊김 → 서버가 지우고 left
+```
+- 상단 바에 `공용 라운지에 N마리 접속`. 연결이 없으면 숫자를 숨긴다.
+- 끊기면 3초 뒤 자동으로 다시 연결하고, 지금 위치·책상으로 다시 입장한다. 로그인 후 새로고침도, 로그아웃 후 재연결도 같은 길이다.
+
+#### 구조
+| 무엇 | 위치 | 하는 일 |
+|---|---|---|
+| STOMP 설정 | `backend/.../lounge/LoungeWebSocketConfiguration` | `/ws`, 허용 출처, simple broker, 메시지 순서 보장 |
+| 신원 정하기 | `LoungeHandshakeHandler`, `LoungeIdentity` | 핸드셰이크 때 쿠키 → JWT 검증 → 회원/게스트. 연결마다 아바타 id |
+| 접속자 목록 | `LoungeRegistry` | 서버 메모리. 아바타 상태, 책상 주인. 입력 바로잡기(지도 밖 좌표, 없는 털색, 회원 닉네임 흉내) |
+| 메시지 처리 | `LoungeController` | `@MessageMapping` join/move/sit/stand, 연결 끊김 이벤트 |
+| 메시지 모양 | `LoungeMessages` ↔ `frontend/src/entities/lounge/api/loungeMessages.ts` | 두 쪽이 같아야 한다 |
+| 연결 모듈 | `frontend/src/entities/lounge/api/loungeConnection.ts` | 연결·재연결·입장, 위치 보내기, 앉기 요청, 앉기·일어나기를 서버에 한 번만 알림 |
+| 접속자 저장소 | `frontend/src/entities/lounge/model/rosterStore.ts` | 서버가 알려 준 모두. Phaser 는 매 프레임 읽고, React 는 접속자 수만 구독 |
+| 다른 사람 고양이 | `frontend/src/widgets/lounge-map/lib/RemoteCats.ts` | 그리기, 보간, 앉은 자세, 노트북 켜기 |
+
+#### 공부할 개념
+
+**1. WebSocket과 STOMP**
+- HTTP는 "요청하면 한 번 응답"이라 서버가 먼저 말을 걸 수 없다. 다른 사람이 움직였다는 소식을 받으려면 계속 물어봐야 한다(폴링). WebSocket은 한 번 열면 양쪽이 아무 때나 보낼 수 있는 통로다.
+- WebSocket은 통로만 있고 "어떤 형식으로 말할지"가 없다. STOMP는 그 위의 메시지 규칙이다. `SUBSCRIBE`(이 주소로 오는 것을 받겠다), `SEND`(이 주소로 보낸다), `MESSAGE`(구독한 주소로 온 것)라는 프레임과 주소(destination)가 있다.
+- Spring의 simple broker는 "누가 어느 주소를 구독했는가"를 서버 메모리에 두는 내장 우체국이다. `/app/...`으로 온 것은 컨트롤러(`@MessageMapping`)가 받고, 컨트롤러가 `/topic/...`으로 보내면 구독자 모두에게 간다.
+
+**2. 핸드셰이크에서 신원 정하기**
+- WebSocket은 처음에 평범한 HTTP 요청(`Upgrade: websocket`)으로 시작한다. 브라우저는 이 요청에 쿠키를 자동으로 붙인다. 그래서 HttpOnly 쿠키(자바스크립트가 못 읽음)로도 인증할 수 있다.
+- 신원은 이때 **한 번만** 정해 연결에 붙여 둔다(`Principal`). 메시지를 처리할 때는 본문에 적힌 id가 아니라 이 신원만 쓴다. 본문의 id를 믿으면 누구나 `{"userId": 7}`이라고 적어 남의 고양이를 움직일 수 있다.
+- 그래서 로그인·로그아웃으로 쿠키가 바뀌면 연결을 다시 열어야 새 신원이 붙는다 (`loungeConnection.restart()`).
+- 원래 쓰던 `BearerTokenResolver`는 `/ws`에서 쿠키를 읽지 않게 했다. 읽으면 만료된 쿠키를 가진 사람은 `permitAll`이어도 토큰 검증 실패로 401이 나서 게스트로도 들어오지 못한다.
+
+**3. 방송과 개인 큐**
+- `/topic/lounge`: 구독한 모두에게 (누가 들어왔다, 움직였다, 앉았다).
+- `/user/queue/lounge`: 이 연결 하나에게만 (입장 직후 전체 목록, 책상 거절). 클라이언트는 `/user/queue/lounge`를 구독하고, 서버는 `convertAndSendToUser(신원 이름, "/queue/lounge", ...)`로 보낸다. 신원 이름(`Principal.getName()`)을 연결마다 다른 아바타 id로 둬서, 같은 회원이 탭을 두 개 열어도 각 탭이 자기 것만 받는다.
+
+**4. 다른 사이트에서 몰래 연결하기 (Cross-Site WebSocket Hijacking)**
+- 공격자 사이트가 방문자의 브라우저로 우리 `/ws`를 열면, 브라우저가 우리 쿠키를 붙일 수 있다. 그러면 공격자 페이지가 방문자 이름으로 라운지에 들어온다.
+- 막는 방법: 서버가 핸드셰이크의 `Origin` 헤더를 보고 허용한 프론트 주소(`app.frontend-url`)가 아니면 거절한다(`setAllowedOrigins`). 쿠키의 `SameSite=Lax`도 다른 사이트에서 시작한 요청에 쿠키를 덜 붙인다. 테스트 `rejectsOtherOrigins`가 확인한다.
+
+**5. 메시지 순서 (`setPreserveReceiveOrder`, `setPreservePublishOrder`)**
+- Spring은 받은 메시지를 여러 스레드로 나눠 처리한다. 그대로 두면 한 사람이 보낸 이동 1, 2, 3이 2, 1, 3 순서로 처리되어 다른 사람 화면에서 고양이가 뒤로 튈 수 있다.
+- 두 설정은 "같은 연결에서 온 것은 받은 순서대로 처리하고, 같은 연결로 가는 것은 보낸 순서대로 보낸다"를 보장한다. 다른 연결끼리는 여전히 동시에 처리되어 느려지지 않는다.
+
+**6. 동시에 같은 책상 (원자적 연산)**
+- 두 사람이 같은 순간 같은 책상에서 F를 누르면, "비어 있나 보고 → 앉힌다"를 두 번 하면 둘 다 "비었다"를 보고 둘 다 앉을 수 있다(check-then-act, 7장 "부하 제한"과 같은 문제).
+- `ConcurrentHashMap.putIfAbsent(책상, 나)`는 "비어 있을 때만 넣기"를 한 번에 해서 한 명만 성공한다. 그래서 클라이언트도 바로 앉지 않고, 서버의 `sat` 방송을 받은 뒤에 앉는다. 서버가 꺼져 있으면 혼자 앉는다.
+- 앉은 채로 다시 연결했는데 그새 남이 그 책상에 앉았거나, 문제 주소로 바로 들어왔는데 기본 책상이 차 있으면 가까운 빈 책상으로 옮긴다(`firstFreeDesk`).
+
+**7. 보내는 양 줄이기 (throttle)와 받는 쪽 보간**
+- 게임 루프는 초당 60번 돌지만 그걸 다 보내면 30명일 때 서버가 초당 54,000개를 뿌려야 한다. 움직일 때만, 최대 100ms에 한 번 보내고, 멈추는 순간 마지막 위치를 한 번 더 보낸다(이게 없으면 남의 화면에서 멈추기 직전 자리에 남는다).
+- 받는 쪽은 100ms마다 순간이동하지 않도록, 매 프레임 남은 거리의 `(지난 시간 / 100ms)`만큼 다가간다(선형 보간). 40도트보다 멀면(재연결 등) 바로 옮긴다.
+- 위치는 클라이언트를 믿는다. 서버는 지도 밖 좌표만 잘라 낸다. 벽 통과 같은 조작은 막지 못하지만, 라운지는 점수가 걸린 곳이 아니라 허용했다.
+
+**8. 서버 메모리 상태의 한계**
+- 접속자 목록은 DB가 아니라 서버 메모리(`ConcurrentHashMap`)다. 위치는 초당 여러 번 바뀌고, 서버가 꺼지면 연결도 다 끊겨 어차피 다시 입장하므로 잃어도 된다.
+- 서버가 여러 대가 되면 서버마다 다른 목록을 갖고, simple broker도 자기 서버의 구독자에게만 보낸다. 그때는 외부 브로커(RabbitMQ STOMP 릴레이 등)와 공용 저장소(Redis)로 옮긴다.
+
+#### 선택과 이유
+| 항목 | 선택 | 이유 (대안) |
+|---|---|---|
+| 통신 | WebSocket + STOMP, Spring simple broker | 서버 1대라 내장 우체국으로 충분. 주소·구독 규칙을 직접 만들 필요가 없다 (Socket.IO: Spring 공식 지원 없음, 직접 만든 WebSocket 규칙: 구독·개인 큐를 다 만들어야 함) |
+| SockJS | 쓰지 않음 | WebSocket이 막힌 환경용 대체 통신. 지원 브라우저가 모두 WebSocket을 쓴다 |
+| 인증 | 핸드셰이크 쿠키 | STOMP CONNECT 헤더에 토큰을 넣으려면 자바스크립트가 토큰을 읽어야 하는데 HttpOnly라 못 읽는다 |
+| 게스트 신원 | 연결마다 서버가 아바타 id 발급, 닉네임·털색은 localStorage | 게스트는 저장할 기록이 없다. 위조할 수 없고 단순하다 |
+| 같은 회원 탭 두 개 | 고양이 두 마리 | 한 마리로 합치려면 "어느 탭이 진짜인가"를 정해야 한다. 나중에 |
+| 접속자 목록 | 서버 메모리 | 잃어도 되는 값, 초당 여러 번 바뀜 |
+| 클라이언트 | `@stomp/stompjs` 7.5.0 | 자동 재연결 내장, 의존성 없음 |
+
+#### 검증
+- `LoungeWebSocketTest` (실제 서버에 STOMP 클라이언트 여러 개, Docker 필요)
+  - 두 게스트가 서로 보이고 이동이 전달된다
+  - 같은 책상은 한 명만, 늦게 온 쪽은 거절, 먼저 앉은 쪽이 나가면 책상이 빈다
+  - 쿠키가 맞으면 회원 닉네임, 틀리면 게스트
+  - 회원 닉네임 흉내·없는 털색·지도 밖 좌표를 서버가 바로잡는다
+  - 다른 출처(Origin)는 연결할 수 없다
+- 브라우저 탭 두 개 (2026-11-11): 서로 입장하면 `2마리 접속`, 한쪽 위치·방향·멈춤이 다른 쪽에 도착, 한쪽이 3번 책상에 앉으면 다른 쪽 화면에 앉은 고양이와 켜진 노트북이 보이고 같은 책상 앉기는 거절, 탭을 닫으면 `1마리`로 줄고 책상이 빈다.
