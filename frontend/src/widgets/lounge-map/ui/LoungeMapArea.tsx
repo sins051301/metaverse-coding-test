@@ -9,7 +9,7 @@ import { ActivityStrip } from './ActivityStrip'
 import { LoungeMap } from './LoungeMap'
 import { NeighborList } from './NeighborList'
 import { RecentSolves } from './RecentSolves'
-import styles from './LoungeMapArea.module.css'
+import * as styles from './LoungeMapArea.css'
 
 const COLLAPSED_KEY = 'codingtest:v1:mapCollapsed'
 

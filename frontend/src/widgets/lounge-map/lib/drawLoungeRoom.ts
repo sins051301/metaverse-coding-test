@@ -11,6 +11,7 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH,
 } from '@/widgets/lounge-map/model/loungeMap'
+import { vars } from '@/shared/styles/theme.css'
 
 type ColorOf = (token: string) => string
 
@@ -33,7 +34,7 @@ export function drawRoom(context: CanvasRenderingContext2D, colorOf: ColorOf) {
   ) {
     for (let column = 0; column < WORLD_WIDTH / FLOOR_CELL; column++) {
       rect(
-        (row + column) % 2 ? '--map-floor-a' : '--map-floor-b',
+        (row + column) % 2 ? vars.map.floorA : vars.map.floorB,
         column * FLOOR_CELL,
         row * FLOOR_CELL,
         FLOOR_CELL,
@@ -41,22 +42,22 @@ export function drawRoom(context: CanvasRenderingContext2D, colorOf: ColorOf) {
       )
     }
   }
-  rect('--map-rug-edge', RUG.x, RUG.y, RUG.width, RUG.height)
-  rect('--map-rug', RUG.x + 2, RUG.y + 2, RUG.width - 4, RUG.height - 4)
-  rect('--map-wall', 0, 0, WORLD_WIDTH, WALL_HEIGHT)
-  rect('--map-wall-edge', 0, WALL_HEIGHT - 2, WORLD_WIDTH, 2)
+  rect(vars.map.rugEdge, RUG.x, RUG.y, RUG.width, RUG.height)
+  rect(vars.map.rug, RUG.x + 2, RUG.y + 2, RUG.width - 4, RUG.height - 4)
+  rect(vars.map.wall, 0, 0, WORLD_WIDTH, WALL_HEIGHT)
+  rect(vars.map.wallEdge, 0, WALL_HEIGHT - 2, WORLD_WIDTH, 2)
   for (const window of WINDOWS) {
-    rect('--map-frame', window.x, window.y, window.width, window.height)
+    rect(vars.map.frame, window.x, window.y, window.width, window.height)
     rect(
-      '--map-sky',
+      vars.map.sky,
       window.x + 2,
       window.y + 2,
       window.width - 4,
       window.height - 4,
     )
-    rect('--map-sky-light', window.x + 2, window.y + 2, 12, 5)
+    rect(vars.map.skyLight, window.x + 2, window.y + 2, 12, 5)
   }
-  rect('--map-frame', BOARD.x, BOARD.y, BOARD.width, BOARD.height)
+  rect(vars.map.frame, BOARD.x, BOARD.y, BOARD.width, BOARD.height)
 }
 
 export function drawDesk(
@@ -75,12 +76,12 @@ export function drawDesk(
     context.fillRect(x, y - DESK_SPRITE_TOP, width, height)
   }
   context.clearRect(0, 0, DESK_WIDTH, DESK_SPRITE_HEIGHT)
-  rect('--map-desk-top', 0, 0, DESK_WIDTH, 6)
-  rect('--map-desk-front', 0, 6, DESK_WIDTH, DESK_BODY_HEIGHT - 6)
-  rect('--map-desk-front', 2, DESK_BODY_HEIGHT, 2, 3)
-  rect('--map-desk-front', DESK_WIDTH - 4, DESK_BODY_HEIGHT, 2, 3)
-  rect('--map-laptop', 16, -5, 8, 6)
+  rect(vars.map.deskTop, 0, 0, DESK_WIDTH, 6)
+  rect(vars.map.deskFront, 0, 6, DESK_WIDTH, DESK_BODY_HEIGHT - 6)
+  rect(vars.map.deskFront, 2, DESK_BODY_HEIGHT, 2, 3)
+  rect(vars.map.deskFront, DESK_WIDTH - 4, DESK_BODY_HEIGHT, 2, 3)
+  rect(vars.map.laptop, 16, -5, 8, 6)
   if (lit) {
-    rect('--map-screen', 17, -4, 6, 3)
+    rect(vars.map.screen, 17, -4, 6, 3)
   }
 }

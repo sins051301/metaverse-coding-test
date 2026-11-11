@@ -5,7 +5,7 @@ import {
   loungeStore,
   useLoungeState,
 } from '@/entities/lounge/model/loungeStore'
-import styles from './LoungeMap.module.css'
+import * as styles from './LoungeMap.css'
 
 export function LoungeMap() {
   const containerRef = useRef<HTMLDivElement>(null)

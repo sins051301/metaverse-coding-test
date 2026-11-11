@@ -1,13 +1,14 @@
 const cache = new Map<string, string>()
 
-export function tokenColor(token: string): string {
-  const cached = cache.get(token)
+export function tokenColor(variable: string): string {
+  const cached = cache.get(variable)
   if (cached !== undefined) {
     return cached
   }
+  const name = /^var\((--[\w-]+)\)$/.exec(variable)?.[1] ?? variable
   const value = getComputedStyle(document.documentElement)
-    .getPropertyValue(token)
+    .getPropertyValue(name)
     .trim()
-  cache.set(token, value)
+  cache.set(variable, value)
   return value
 }

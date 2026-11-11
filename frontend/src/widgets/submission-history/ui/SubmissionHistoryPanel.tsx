@@ -3,7 +3,7 @@ import { currentUserQuery } from '@/entities/user/api/userQueries'
 import { startLogin } from '@/features/auth/model/login'
 import { Button } from '@/shared/ui/Button'
 import { SubmissionHistoryTable } from './SubmissionHistoryTable'
-import styles from './SubmissionHistory.module.css'
+import * as styles from './SubmissionHistory.css'
 
 export function SubmissionHistoryPanel({ problemId }: { problemId: number }) {
   const { data: user } = useQuery(currentUserQuery())

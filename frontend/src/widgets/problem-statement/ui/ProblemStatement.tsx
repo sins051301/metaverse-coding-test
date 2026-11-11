@@ -2,7 +2,7 @@ import { memo } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ProblemDetail } from '@/entities/problem/api/problemQueries'
-import styles from './ProblemStatement.module.css'
+import * as styles from './ProblemStatement.css'
 
 const REMARK_PLUGINS = [remarkGfm]
 const MILLISECONDS_PER_SECOND = 1000

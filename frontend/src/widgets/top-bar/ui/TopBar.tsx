@@ -7,7 +7,7 @@ import { loungeConnection } from '@/entities/lounge/api/loungeConnection'
 import { useOnlineCount } from '@/entities/lounge/model/rosterStore'
 import { logout, startLogin } from '@/features/auth/model/login'
 import { Button } from '@/shared/ui/Button'
-import styles from './TopBar.module.css'
+import * as styles from './TopBar.css'
 
 export function TopBar() {
   const queryClient = useQueryClient()

@@ -27,6 +27,7 @@ import {
 } from '@/widgets/lounge-map/lib/drawEffects'
 import { tokenColor } from '@/widgets/lounge-map/lib/tokenColor'
 import type { Desk } from '@/widgets/lounge-map/model/loungeMap'
+import { vars } from '@/shared/styles/theme.css'
 
 const WALK_FRAME_RATE = 4
 const NAME_TAG_GAP = 1
@@ -145,8 +146,8 @@ export function createCatView(
     .text(0, NAME_TAG_Y, name, {
       fontFamily: 'Jua, sans-serif',
       fontSize: '7px',
-      color: tokenColor(mine ? '--color-accent-ink' : '--color-tag-ink'),
-      backgroundColor: tokenColor(mine ? '--color-accent' : '--color-tag'),
+      color: tokenColor(mine ? vars.color.accentInk : vars.color.tagInk),
+      backgroundColor: tokenColor(mine ? vars.color.accent : vars.color.tag),
       padding: { x: 2, y: 0 },
     })
     .setOrigin(0.5, 1)

@@ -46,6 +46,7 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH,
 } from '@/widgets/lounge-map/model/loungeMap'
+import { vars } from '@/shared/styles/theme.css'
 
 const WALK_SPEED = 45
 const PANEL_ZOOM = 2
@@ -346,7 +347,7 @@ export class LoungeScene extends Phaser.Scene {
       .text(BOARD.x + BOARD.width / 2, BOARD.y + BOARD.height / 2, '', {
         fontFamily: 'Jua, sans-serif',
         fontSize: `${BOARD_FONT_SIZE}px`,
-        color: tokenColor('--color-tag-ink'),
+        color: tokenColor(vars.color.tagInk),
       })
       .setOrigin(0.5, 0.5)
       .setDepth(0)

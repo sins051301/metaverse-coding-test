@@ -1,7 +1,7 @@
 import { useRecentSolves } from '@/entities/lounge/model/rosterStore'
 import { useNow } from '@/shared/lib/useNow'
 import { formatRelativeTime } from '@/widgets/lounge-map/lib/relativeTime'
-import styles from './LoungeOverlays.module.css'
+import * as styles from './LoungeOverlays.css'
 
 const VISIBLE_COUNT = 3
 

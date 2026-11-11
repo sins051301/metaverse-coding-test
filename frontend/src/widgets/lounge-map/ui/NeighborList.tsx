@@ -5,7 +5,7 @@ import {
 } from '@/entities/lounge/model/rosterStore'
 import { useNow } from '@/shared/lib/useNow'
 import { DESKS } from '@/widgets/lounge-map/model/loungeMap'
-import styles from './LoungeOverlays.module.css'
+import * as styles from './LoungeOverlays.css'
 
 const RECENTLY_SOLVED_MS = 5 * 60_000
 

@@ -1,3 +1,5 @@
+import { vars } from '@/shared/styles/theme.css'
+
 type ColorOf = (token: string) => string
 
 export const BUBBLE_WIDTH = 10
@@ -19,19 +21,25 @@ export function drawBubble(
     context.fillStyle = colorOf(token)
     context.fillRect(x, y, width, height)
   }
-  const face = failure ? '--cat-grey' : '--map-frame'
+  const face = failure ? vars.cat.grey : vars.map.frame
   rect(face, 0, 0, 9, 5)
   rect(face, 7, 5, 2, 1)
   rect(face, 9, 4, 1, 1)
   for (let dot = 0; dot < 3; dot++) {
-    rect(dot === dotIndex ? '--map-pot' : '--map-laptop', 2 + dot * 2, 2, 1, 1)
+    rect(
+      dot === dotIndex ? vars.map.pot : vars.map.laptop,
+      2 + dot * 2,
+      2,
+      1,
+      1,
+    )
   }
 }
 
 export const Z_SIZE = 3
 
 export function drawZ(context: CanvasRenderingContext2D, colorOf: ColorOf) {
-  context.fillStyle = colorOf('--map-frame')
+  context.fillStyle = colorOf(vars.map.frame)
   context.fillRect(0, 0, 3, 1)
   context.fillRect(1, 1, 1, 1)
   context.fillRect(0, 2, 3, 1)
@@ -41,7 +49,7 @@ export const STAR_WIDTH = 8
 export const STAR_HEIGHT = 4
 
 export function drawStar(context: CanvasRenderingContext2D, colorOf: ColorOf) {
-  context.fillStyle = colorOf('--map-star')
+  context.fillStyle = colorOf(vars.map.star)
   context.fillRect(3, 0, 2, 1)
   context.fillRect(1, 1, 6, 1)
   context.fillRect(2, 2, 4, 1)
@@ -71,9 +79,9 @@ export function drawSolved(
   context: CanvasRenderingContext2D,
   colorOf: ColorOf,
 ) {
-  context.fillStyle = colorOf('--map-frame')
+  context.fillStyle = colorOf(vars.map.frame)
   context.fillRect(0, 0, SOLVED_WIDTH, SOLVED_HEIGHT)
-  context.fillStyle = colorOf('--map-pot')
+  context.fillStyle = colorOf(vars.map.pot)
   let cursor = 2
   for (const glyph of SOLVED_GLYPHS) {
     glyph.forEach((row, rowIndex) =>

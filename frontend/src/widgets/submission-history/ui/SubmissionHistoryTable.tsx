@@ -8,7 +8,7 @@ import {
 import { LANGUAGES, type Language } from '@/shared/config/languages'
 import { formatDateTime } from '@/shared/lib/formatDateTime'
 import { Button } from '@/shared/ui/Button'
-import styles from './SubmissionHistory.module.css'
+import * as styles from './SubmissionHistory.css'
 
 const CodeViewer = lazy(() =>
   import('@/shared/ui/CodeViewer').then((module) => ({

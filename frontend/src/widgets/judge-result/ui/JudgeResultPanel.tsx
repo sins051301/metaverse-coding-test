@@ -8,7 +8,7 @@ import type {
 import type { ProblemParameter } from '@/entities/problem/api/problemQueries'
 import type { JudgeView } from '@/features/judge-code/model/useJudge'
 import { Button } from '@/shared/ui/Button'
-import styles from './JudgeResultPanel.module.css'
+import * as styles from './JudgeResultPanel.css'
 
 const FAILURE_REASON: Record<Verdict, string> = {
   AC: '',

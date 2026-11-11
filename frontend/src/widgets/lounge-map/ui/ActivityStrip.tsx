@@ -4,7 +4,7 @@ import {
   useSeatedNeighbors,
 } from '@/entities/lounge/model/rosterStore'
 import { useNow } from '@/shared/lib/useNow'
-import styles from './ActivityStrip.module.css'
+import * as styles from './ActivityStrip.css'
 
 const RECENT_STAR_MS = 5 * 60_000
 
