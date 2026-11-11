@@ -4,6 +4,8 @@ import com.codingtest.auth.TokenService;
 import com.codingtest.submission.SubmissionAcceptedEvent;
 import com.codingtest.user.User;
 import com.codingtest.user.UserService;
+import jakarta.websocket.ContainerProvider;
+import jakarta.websocket.WebSocketContainer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -176,6 +178,57 @@ class LoungeWebSocketTest {
 	}
 
 	@Test
+	@DisplayName("관전: 방에 들어오면 방 정보를 받고, 주인이 보낸 문서 전체·변경이 관전자에게만 간다. 큰 코드(200KB)도 한 번에 간다")
+	void relaysOwnerDocumentToSpectators() throws Exception {
+		LoungeClient owner = connect(null);
+		String ownerId = owner.join(100, 120, 7);
+		owner.send("/app/desk/host", Map.of("problemId", 1, "language", "JAVA"));
+		LoungeClient spectator = connect(null);
+		String spectatorId = spectator.join(160, 130, null);
+		LoungeClient outsider = connect(null);
+		outsider.join(200, 150, null);
+
+		spectator.send("/app/desk/" + ownerId + "/join", Map.of());
+		JsonNode opened = spectator.awaitDesk("opened");
+		assertThat(opened.path("problemId").asLong()).isEqualTo(1);
+		assertThat(opened.path("language").asString()).isEqualTo("JAVA");
+		assertThat(owner.awaitDesk("member-joined").path("memberId").asString()).isEqualTo(spectatorId);
+		assertThat(owner.awaitDesk("spectators").path("spectatorCount").asInt()).isEqualTo(1);
+
+		String bigDocument = "A".repeat(200_000);
+		owner.send("/app/desk/" + ownerId + "/full", Map.of("to", spectatorId, "kind", "doc", "payload", bigDocument));
+		assertThat(spectator.awaitDesk("full").path("payload").asString()).hasSize(200_000);
+
+		owner.send("/app/desk/" + ownerId + "/update", Map.of("kind", "doc", "payload", "AQID"));
+		assertThat(spectator.awaitDesk("update").path("payload").asString()).isEqualTo("AQID");
+		outsider.assertNoDesk("update");
+	}
+
+	@Test
+	@DisplayName("관전자가 보낸 문서 변경은 서버가 버린다 (읽기 전용 강제). 주인이 나가면 관전자에게 closed, 없는 방은 not-found")
+	void enforcesReadOnlyAndClosesRoom() throws Exception {
+		LoungeClient owner = connect(null);
+		String ownerId = owner.join(100, 120, 7);
+		owner.send("/app/desk/host", Map.of("problemId", 1, "language", "JAVA"));
+		LoungeClient spectator = connect(null);
+		spectator.join(160, 130, null);
+		LoungeClient another = connect(null);
+		another.join(200, 150, null);
+		spectator.send("/app/desk/" + ownerId + "/join", Map.of());
+		another.send("/app/desk/" + ownerId + "/join", Map.of());
+		spectator.awaitDesk("opened");
+		another.awaitDesk("opened");
+
+		spectator.send("/app/desk/" + ownerId + "/update", Map.of("kind", "doc", "payload", "AQID"));
+		another.assertNoDesk("update");
+
+		owner.disconnect();
+		spectator.awaitDesk("closed");
+		spectator.send("/app/desk/" + ownerId + "/join", Map.of());
+		spectator.awaitDesk("not-found");
+	}
+
+	@Test
 	@DisplayName("허용한 프론트 주소가 아닌 다른 사이트(Origin)에서는 연결할 수 없다")
 	void rejectsOtherOrigins() {
 		assertThatThrownBy(() -> connect(null, "http://evil.example")).isInstanceOf(Exception.class);
@@ -186,7 +239,11 @@ class LoungeWebSocketTest {
 	}
 
 	private LoungeClient connect(String cookie, String origin) throws Exception {
-		WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
+		// 브라우저와 달리 테스트용 클라이언트는 받는 메시지 크기 제한(STOMP 64KB, WebSocket 버퍼 8KB)이 따로 있어 관전 테스트의 큰 문서를 위해 올린다
+		WebSocketContainer container = ContainerProvider.getWebSocketContainer();
+		container.setDefaultMaxTextMessageBufferSize(1024 * 1024);
+		WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient(container));
+		stompClient.setInboundMessageSizeLimit(1024 * 1024);
 		stompClient.setMessageConverter(new JacksonJsonMessageConverter());
 		WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
 		handshakeHeaders.setOrigin(origin);
@@ -210,6 +267,7 @@ class LoungeWebSocketTest {
 		private final StompSession session;
 		private final BlockingQueue<JsonNode> events = new LinkedBlockingQueue<>();
 		private final BlockingQueue<JsonNode> personal = new LinkedBlockingQueue<>();
+		private final BlockingQueue<JsonNode> desk = new LinkedBlockingQueue<>();
 		private JsonNode snapshot;
 		private String myAvatarId;
 
@@ -217,6 +275,7 @@ class LoungeWebSocketTest {
 			this.session = session;
 			session.subscribe("/topic/lounge", collector(events));
 			session.subscribe("/user/queue/lounge", collector(personal));
+			session.subscribe("/user/queue/desk", collector(desk));
 		}
 
 		String join(int x, int y, Integer deskId) throws InterruptedException {
@@ -254,6 +313,19 @@ class LoungeWebSocketTest {
 
 		JsonNode awaitEventOfType(String type) throws InterruptedException {
 			return awaitMatching(events, message -> type.equals(message.path("type").asString()), type);
+		}
+
+		JsonNode awaitDesk(String type) throws InterruptedException {
+			return awaitMatching(desk, message -> type.equals(message.path("type").asString()), "desk " + type);
+		}
+
+		// 잠깐 기다려도 이 종류의 책상 메시지가 오지 않아야 한다 (버려졌거나 받을 자격이 없음)
+		void assertNoDesk(String type) throws InterruptedException {
+			long deadline = System.nanoTime() + Duration.ofMillis(800).toNanos();
+			while (System.nanoTime() < deadline) {
+				JsonNode message = desk.poll(deadline - System.nanoTime(), TimeUnit.NANOSECONDS);
+				assertThat(message == null ? null : message.path("type").asString()).isNotEqualTo(type);
+			}
 		}
 
 		JsonNode awaitPersonal(String type) throws InterruptedException {
