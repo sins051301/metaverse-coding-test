@@ -22,6 +22,7 @@
 | 낮잠 판단 | `activityTracker.NAP_AFTER_MS` | 5분 | 설계 문서 값 | 지문을 오래 읽는 사람이 낮잠으로 보이는지 | 서비스 공개 후 |
 | 별·SOLVED! 표시 | `catView.SOLVED_SHOW_MS` | 10초 | 축하가 눈에 띄되 오래 가리지 않게 | — | 서비스 공개 후 |
 | 오답 ... 표시 | `catView.FAILURE_SHOW_MS` | 3초 | 임시 실패 이펙트 | 실패 이펙트를 정식으로 정할 때 | 이펙트 정리 때 |
+| WebSocket 메시지 크기 | `LoungeWebSocketConfiguration.MESSAGE_SIZE_LIMIT_BYTES` | 512KB | 관전 시작 때 코드 전체(최대 64K자)를 base64 로 보내도 넉넉하게 | 실제 문서 크기 분포. 너무 크면 악의적인 큰 메시지로 메모리를 쓰게 할 수 있음 | 배포 전 |
 | 하트비트 | `LoungeWebSocketConfiguration.HEARTBEAT_MILLIS` | 10초 | stompjs 기본값과 같게 | 유령 고양이가 사라지는 데 걸리는 시간, 모바일 배터리 | 배포 후 |
 | 재연결 대기 | `loungeConnection.RECONNECT_DELAY_MS` | 3초 | 서버 재시작 중 계속 두드리지 않을 만큼 | 배포 후 끊김이 잦은지 | 배포 시 |
 | 바로 옮기는 거리 | `RemoteCats.SNAP_DISTANCE` | 40도트 | 100ms에 걷는 거리(4.5도트)의 약 9배. 이보다 멀면 재연결 등으로 밀린 것으로 봄 | 남의 고양이가 순간이동하는 게 거슬리는지 | 2단계 확인 후 |

@@ -146,7 +146,7 @@ MVP 이후 공용 맵·관전 구조 위에 확장한다 (MVP 설계 변경 불�
 | DB 접근 | **Spring Data JPA** (Hibernate 7) | 고정 조회가 대부분이라 Repository 메서드로 충분. `@ManyToOne`은 항상 LAZY (관계를 따라 연쇄 조회가 퍼지는 것을 막고, 같이 읽을 때만 fetch join / `@EntityGraph`) |
 | QueryDSL | **MVP 제외** | MVP 조회는 고정 쿼리라 Spring Data JPA/JPQL로 충분. 동적 필터가 생기면 관리되는 `io.github.openfeign.querydsl` 포크로 도입 |
 | 실시간 | STOMP (Spring simple broker) | (2단계 예정) 아바타 위치·상태·이펙트·채점 결과 알림 브로드캐스트. 연결할 때 HttpOnly 쿠키로 신원 확인, 메시지는 연결에 붙은 신원만 믿음, 게스트는 연결마다 서버가 id 발급, 위치는 최대 100ms 간격 (10장) |
-| 동시 편집 | Yjs + `y-monaco` | (예정) 병합은 클라이언트 CRDT가 하고 서버는 중계만. 중계 위치(Spring 릴레이 vs Node `y-websocket`)는 페어 기능 구현 때 결정 |
+| 동시 편집·관전 | **Yjs** 13.6 + `y-monaco` 0.1 + `y-protocols`(awareness) | 병합은 브라우저의 CRDT가 하고 서버(Spring)는 방 단위로 바이트만 중계 (10장 "관전"). 대안 비교: Loro·Automerge는 Monaco 연결이 0.0.x 실험 단계, ShareDB(OT)는 Node 서버 필수, 호스팅 서비스는 유료·외부 의존 |
 | 인증 | **Spring Security 7** OAuth2 Client(Google 로그인) + OAuth2 Resource Server(JWT 검증, 내장 Nimbus) | 별도 JWT 라이브러리(jjwt) 없이 발급·검증. 토큰은 **HttpOnly 쿠키**(`SameSite=Lax`)로 심어 프론트 자바스크립트가 읽지 못하게 함(XSS로 토큰 탈취 불가). 서버는 `Authorization` 헤더를 먼저, 없으면 쿠키를 읽음(`BearerTokenResolver`). CSRF는 `SameSite=Lax`가 다른 사이트의 POST에 쿠키를 붙이지 않는 것으로 막음 |
 | 채점 | **Docker + docker-java 3.7.1** | 제출마다 격리 컨테이너 생성. CLI 호출보다 종료 코드·OOM 등을 구조화된 값으로 받을 수 있다 |
 | API 문서 | **springdoc-openapi 3.2.0** (Swagger UI) | 컨트롤러에서 API 문서가 자동으로 만들어지고 브라우저에서 바로 요청을 보내 볼 수 있음. Spring Boot 4.1.2 기준 빌드 |
@@ -223,7 +223,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
-| GET | `/api/problems` | 문제 목록 (`id`, `title`, `level`) |
+| GET | `/api/problems` | 문제 목록 (`id`, `title`, `level`, `solved`). 로그인했으면 `solved`에 내가 푼 문제인지([완료] 뱃지), 게스트는 모두 `false` |
 | GET | `/api/problems/{id}` | 문제 상세 (지문, 파라미터, 반환 타입, 시간·메모리 제한, 언어별 `starterCode`) |
 | POST | `/api/problems/{id}/runs` | [코드 실행] `{"language": "JAVA", "sourceCode": "..."}` → 예제만 채점. 접수만 하고 `202 {"id", "status": "PENDING"}`. **로그인 필요** |
 | GET | `/api/runs/{id}` | 실행 결과 (상태, 판정, 통과 수, 예제별 입력·기댓값·반환값·출력). `status`가 `DONE`이 될 때까지 다시 부른다. 본인 것만 |
@@ -586,6 +586,7 @@ JPA 매핑은 `JsonNodeConverter`로 문자열 ↔ `JsonNode` 변환 (Hibernate 
 | 라운지 1 | 라운지 혼자 걷기: Phaser 지도, 도트 고양이(4방향 걷기·앉기), 충돌, 책상 앞 `[F]` 앉기 → 문제 선택, ESC·[일어나기], 화면을 옮겨도 지도 유지 (10장) | 완료 |
 | 라운지 2 | 여러 명 동기화: STOMP, 접속·퇴장, 위치·상태 방송, 접속자 수, 책상 점유, 게스트 신원 (10장 "2단계") | 완료 (브라우저 탭 두 개로 입장·이동·책상 점유·퇴장 확인) |
 | 라운지 3 | 활동 표시: 타이핑 중(앞발·말풍선), 낮잠 중(z, 노트북 꺼짐), 제출 AC 축하(내 SOLVED!, 남의 별, 전광판, 방금 푼 고양이), 오답 ...(임시), 옆자리 목록, 접힌 띠 (10장 "3단계") | 완료 |
+| 라운지 4 | 문제 목록 [완료] 뱃지 + 코드 관전(Yjs, Spring 단순 중계, 읽기 전용 강제, 주인 커서 표시, 관전자 수) (10장 "관전") | 완료 |
 
 ---
 
@@ -818,3 +819,56 @@ SOLVED: 제출 채점 AC → 결과 저장(커밋) → SubmissionAcceptedEvent �
 #### 검증
 - `LoungeWebSocketTest`에 2개 추가 (모두 7개): 앉은 고양이의 활동만 방송·일어나면 idle / AC 이벤트 → 그 회원 아바타에 `solved` 방송, 나중에 들어온 사람도 최근 기록을 받음
 - 브라우저 탭 두 개 (2026-11-11): 탭 B 타이핑 → 탭 A에 말풍선, 탭 B가 실제 제출 AC → 탭 A 전광판·목록·별, 탭 B 자기 화면 `SOLVED!`. 실패 `...`는 그리기만 확인(자동 클릭이 에디터 준비 전에 눌려 실제 오답 제출 흐름은 확인하지 못함)
+
+### 4단계: 코드 관전 (Yjs + Spring 단순 중계)
+
+#### 흐름
+```
+주인이 풀이 화면을 엶 → /app/desk/host (문제·언어) → 서버가 주인 아바타 id 로 방을 엶
+관전 시작: 라운지에서 남이 앉은 책상 앞 [F] "OO님 코드 구경하기" 또는 옆자리 [관전] → /spectate/주인id
+ → /app/desk/{주인}/join → 관전자에게 opened(문제·언어·닉네임), 주인에게 member-joined(관전자 id)·spectators(수)
+ → 주인 브라우저가 지금 문서 전체를 그 관전자에게만 (/full) → 관전자의 읽기 전용 에디터에 코드가 나타남
+주인이 칠 때마다 → Yjs update(바뀐 부분) + 커서(awareness) → /update → 방의 관전자들에게
+주인이 일어나거나 나감 → 방 닫힘 → 관전자에게 closed "자리를 떠났어요"
+```
+- 주인 화면 에디터 머리에 `N명이 구경하고 있어요`. 관전자가 없으면 주인은 아무것도 보내지 않는다.
+- 관전 화면: 배너, 주인의 문제 지문, 읽기 전용 에디터(주인 커서 표시, 드래그해서 복사 가능), [나가기]·ESC. 라운지에서 시작했으면 내 고양이는 서 있고, 내 책상에서 시작했으면 앉은 채로.
+- 주인이 문제·언어를 바꾸면 방을 새 문서로 다시 열고(reset) 관전자 화면도 따라 바뀐다.
+
+#### 공부할 개념
+
+**1. CRDT와 Yjs**
+- 여러 사람이 같은 글을 동시에 고칠 때 "마지막에 온 것으로 덮어쓰기"를 하면 한 사람의 입력이 사라진다. CRDT(충돌 없는 복제 데이터 타입)는 글자마다 "누가, 어느 글자 뒤에" 넣었는지 고유 id를 붙여, 변경이 어떤 순서로 도착해도 모두 같은 결과로 합쳐진다. 서버가 순서를 정해 줄 필요가 없다.
+- OT(Operational Transformation, 구글 문서 초기 방식)는 서버가 순서를 정하고 늦게 온 변경을 변환한다. 서버가 똑똑해야 해서 Spring 단순 중계로는 안 된다(ShareDB는 Node 서버 필수).
+- Yjs 구성: `Y.Doc`(공유 문서, 책상 하나) / `Y.Text`(코드) / update(바뀐 부분을 담은 작은 바이트) / awareness(커서·선택 영역처럼 저장하지 않는 지금 상태) / `y-monaco`(Monaco ↔ `Y.Text` 연결, 남의 커서를 그려 줌).
+- 관전은 "읽기 전용 페어"다. 페어 프로그래밍을 붙일 때 같은 문서·같은 중계를 쓰고, 상대의 변경도 받아 주기만 하면 된다.
+
+**2. 단순 중계 (서버는 바이트 내용을 모른다)**
+- 서버가 하는 일: 방 열고 닫기, 입장 자격, 읽기 전용 강제, 같은 방 사람에게 전달, 관전자 수 알림. 하지 않는 일: 코드 합치기(브라우저 Yjs), 문서 저장(주인 브라우저에 늘 최신 문서가 있다).
+- 늦게 들어온 관전자: 서버가 주인에게 "X가 들어왔다"를 알리면 주인이 `Y.encodeStateAsUpdate(doc)`(문서 전체)를 X에게만 보낸다. 그 뒤로는 바뀐 부분만. 서버에 사본이 없어도 된다.
+- 바이트는 base64 문자열로 바꿔 JSON STOMP 메시지에 싣는다(약 33% 커지지만 디버깅이 쉽다).
+
+**3. 방송(/topic) 대신 개인 큐로 한 명씩**
+- `/topic/desk/7`은 아무나 구독할 수 있어 "방에 들어온 사람만 받기"를 서버가 지킬 수 없다(구독 가로채기를 따로 만들어야 함). 개인 큐(`/user/queue/desk`)로 서버가 방 명단을 보고 한 명씩 보내면 명단 밖 사람은 받을 길이 없다. 방 인원이 몇 명이라 비용이 작다. 테스트 `relaysOwnerDocumentToSpectators`가 방 밖 사람이 못 받는 것을 확인한다.
+
+**4. 읽기 전용은 서버에서 강제한다**
+- 관전자 에디터는 `readOnly`지만, 개발자 도구로 `/update`를 보내면 주인 코드가 바뀔 수 있다. 서버는 방 주인이 보낸 `update`·`full`만 받아 주고 나머지는 버린다(`DeskRooms.ownedBy`). 화면의 제한은 편의, 서버의 제한이 보안이다.
+
+**5. 메시지 크기 제한은 여러 겹이다**
+- 관전 시작 때 코드 전체(최대 64K자, base64로 더 커짐)가 메시지 하나로 간다. 막는 곳이 세 군데였다: STOMP 메시지 크기(기본 64KB, `setMessageSizeLimit`), Tomcat WebSocket 수신 버퍼(기본 8KB, `ServletServerContainerFactoryBean`), 테스트용 Java STOMP 클라이언트의 수신 제한(64KB). 512KB로 올렸고 테스트가 200KB 문서를 보낸다. 브라우저에는 이런 제한이 없다.
+
+**6. 오래된 라이브러리와 새 Monaco (모듈 경로 별칭)**
+- `y-monaco` 0.1.6(2024)은 Monaco 내부 경로 `monaco-editor/esm/vs/editor/editor.api.js`를 불러오는데, Monaco 0.57은 패키지 구조가 바뀌어 그 경로가 없다(빌드 실패). Vite `resolve.alias`로 그 경로를 정식 진입점 `monaco-editor`로 돌렸다. 앱과 같은 Monaco 하나를 함께 쓰게 되어 오히려 맞다.
+- `y-monaco`는 연결할 때 에디터 내용을 `Y.Text`로 덮어쓴다. 그래서 주인은 문서에 지금 코드를 먼저 넣고(`text.insert(0, model.getValue())`) 연결한다. 관전자는 빈 문서로 연결하고 주인의 `full`을 기다린다.
+
+**7. React에서 외부 객체 정리 순서**
+- 관전 훅은 `Y.Doc`·`Awareness`(문서)와 `MonacoBinding`(에디터 연결)을 따로 만든다. 문서를 먼저 지우면 연결이 지워진 문서의 이벤트를 끊으려다 꼬일 수 있다. 효과(`useEffect`)의 정리는 선언 순서대로 돌므로, 연결 정리 효과를 먼저, 문서 정리 효과를 뒤에 선언했다. React 상태로 받은 객체를 직접 고치지 않는다(린트 `react(immutability)`).
+
+#### [완료] 뱃지
+- `GET /api/problems`는 로그인 없이도 열려 있다. 토큰(쿠키)이 있으면 `@AuthenticationPrincipal Jwt`에 신원이 들어오고, 게스트면 `null`이다. 로그인했으면 `user_solved_problems`에서 그 유저의 푼 문제 id를 한 번에 읽어(`findProblemIdsByUserId`, PK 앞 칼럼 `user_id`로 그 유저 행만) 목록에 `solved`를 붙인다.
+- 프론트는 제출이 AC로 끝나거나 로그아웃하면 목록 캐시를 무효화해 뱃지를 다시 받는다.
+
+#### 검증
+- `LoungeWebSocketTest`에 2개 추가 (모두 9개): 방 정보·문서 전체(200KB)·변경이 관전자에게만, 방 밖 사람은 못 받음 / 관전자 변경은 버림, 주인이 나가면 closed, 없는 방은 not-found
+- `ApiTest#marksSolvedProblems`: 로그인 유저가 푼 문제만 `solved`, 게스트는 모두 `false`
+- 브라우저 탭 두 개 (2026-11-11): 관전 탭에 주인 코드·지문·배너, 주인 화면 `1명이 구경하고 있어요`, 주인이 친 줄이 관전 탭에 바로 나타나고 주인 커서(복숭아색)가 보임, 주인이 일어나면 "자리를 떠났어요", 문제 목록 1번에 [완료]
