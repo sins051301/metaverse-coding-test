@@ -181,7 +181,7 @@ class JudgeApiTest {
 	@DisplayName("모든 문제의 시작 코드는 그대로 실행해도 컴파일·실행 에러 없이 채점된다")
 	Stream<DynamicTest> starterCodesRun() {
 		JudgeApiClient user = newUser();
-		return problemService.findAll().stream().flatMap(problem -> Stream.of(Language.values()).map(language ->
+		return problemService.findAll(null).stream().flatMap(problem -> Stream.of(Language.values()).map(language ->
 				DynamicTest.dynamicTest(problem.id() + " " + language, () -> {
 					String starterCode = problemService.getDetail(problem.id()).starterCode().get(language);
 					JsonNode run = user.awaitDone("runs", user.accept("runs", problem.id(), language.name(), starterCode));

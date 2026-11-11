@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.time.Instant;
+import java.util.Set;
 
 public interface UserSolvedProblemRepository extends JpaRepository<UserSolvedProblem, UserSolvedProblem.Id> {
 
@@ -22,5 +23,9 @@ public interface UserSolvedProblemRepository extends JpaRepository<UserSolvedPro
 	void recordIfAbsent(long userId, long problemId, Instant solvedAt);
 
 	long countByIdUserId(long userId);
+
+	// 문제 목록의 [완료] 뱃지용. PK (user_id, problem_id) 의 앞 칼럼으로 찾으므로 그 유저 행만 읽는다
+	@Query("select solved.id.problemId from UserSolvedProblem solved where solved.id.userId = :userId")
+	Set<Long> findProblemIdsByUserId(long userId);
 
 }
