@@ -1,6 +1,7 @@
 package com.codingtest;
 
 import com.codingtest.auth.TokenService;
+import com.codingtest.submission.SubmissionAcceptedEvent;
 import com.codingtest.user.User;
 import com.codingtest.user.UserService;
 import org.junit.jupiter.api.AfterEach;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Import;
 import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
@@ -55,6 +57,9 @@ class LoungeWebSocketTest {
 
 	@Autowired
 	private TokenService tokenService;
+
+	@Autowired
+	private ApplicationEventPublisher eventPublisher;
 
 	private final List<LoungeClient> clients = new ArrayList<>();
 
@@ -132,6 +137,45 @@ class LoungeWebSocketTest {
 	}
 
 	@Test
+	@DisplayName("앉은 고양이의 타이핑·낮잠은 모두에게 방송되고, 서 있으면 무시되며, 일어나면 idle 로 돌아간다")
+	void broadcastsActivityOfSeatedCats() throws Exception {
+		LoungeClient typist = connect(null);
+		String typistId = typist.join(100, 120, null);
+		LoungeClient neighbor = connect(null);
+		neighbor.join(200, 150, null);
+
+		typist.send("/app/lounge/activity", Map.of("activity", "typing"));
+		typist.send("/app/lounge/sit", Map.of("deskId", 5));
+		neighbor.awaitEvent("sat", typistId);
+		typist.send("/app/lounge/activity", Map.of("activity", "napping"));
+		JsonNode napping = neighbor.awaitEvent("activity", typistId);
+		assertThat(napping.path("avatar").path("activity").asString())
+				.as("서 있을 때 보낸 typing 은 무시되어 방송되지 않았고, 앉은 뒤의 napping 이 처음 온 활동이다").isEqualTo("napping");
+
+		typist.send("/app/lounge/stand", Map.of());
+		assertThat(neighbor.awaitEvent("stood", typistId).path("avatar").path("activity").asString()).isEqualTo("idle");
+	}
+
+	@Test
+	@DisplayName("제출이 AC 면 그 회원의 아바타에 별을 띄우라는 solved 가 방송되고, 나중에 들어온 사람도 최근 푼 기록을 받는다")
+	void broadcastsSolvedFromJudgeResult() throws Exception {
+		User user = userService.findOrCreate("lounge-solved-" + UUID.randomUUID(), "solved@example.com");
+		LoungeClient member = connect("accessToken=" + tokenService.issue(user.getId()));
+		String memberId = member.join(100, 120, null);
+
+		eventPublisher.publishEvent(new SubmissionAcceptedEvent(user.getId(), 1));
+
+		JsonNode solved = member.awaitEventOfType("solved");
+		assertThat(solved.path("avatarIds").valueStream().map(JsonNode::asString).toList()).containsExactly(memberId);
+		assertThat(solved.path("solve").path("nickname").asString()).isEqualTo(user.getNickname());
+		assertThat(solved.path("solve").path("problemTitle").asString()).isEqualTo("짝수는 몇 개일까");
+
+		LoungeClient latecomer = connect(null);
+		latecomer.join(200, 150, null);
+		assertThat(latecomer.snapshot.path("recentSolves").get(0).path("nickname").asString()).isEqualTo(user.getNickname());
+	}
+
+	@Test
 	@DisplayName("허용한 프론트 주소가 아닌 다른 사이트(Origin)에서는 연결할 수 없다")
 	void rejectsOtherOrigins() {
 		assertThatThrownBy(() -> connect(null, "http://evil.example")).isInstanceOf(Exception.class);
@@ -206,6 +250,10 @@ class LoungeWebSocketTest {
 		JsonNode awaitEvent(String type, String avatarId) throws InterruptedException {
 			return awaitMatching(events, message -> type.equals(message.path("type").asString())
 					&& avatarId.equals(message.path("avatar").path("id").asString()), type + " " + avatarId);
+		}
+
+		JsonNode awaitEventOfType(String type) throws InterruptedException {
+			return awaitMatching(events, message -> type.equals(message.path("type").asString()), type);
 		}
 
 		JsonNode awaitPersonal(String type) throws InterruptedException {
