@@ -1,9 +1,7 @@
 package com.codingtest.user;
 
-public record UserResponse(long id, String nickname, String email) {
-
-	static UserResponse from(User user) {
-		return new UserResponse(user.getId(), user.getNickname(), user.getEmail());
-	}
-
+/**
+ * @param totalSolved 푼 문제 수 (user_solved_problems 행 개수)
+ */
+public record UserResponse(long id, String nickname, String email, long totalSolved) {
 }

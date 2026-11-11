@@ -19,10 +19,10 @@ public class UserController {
 		this.userService = userService;
 	}
 
-	@Operation(summary = "내 정보", description = "토큰이 제대로 들어갔는지 확인할 때 쓴다")
+	@Operation(summary = "내 정보", description = "닉네임, 이메일, 푼 문제 수. 토큰이 제대로 들어갔는지 확인할 때도 쓴다")
 	@GetMapping("/api/users/me")
 	public UserResponse me(@AuthenticationPrincipal Jwt token) {
-		return UserResponse.from(userService.get(Long.parseLong(token.getSubject())));
+		return userService.getProfile(Long.parseLong(token.getSubject()));
 	}
 
 }

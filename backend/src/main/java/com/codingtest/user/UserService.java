@@ -16,10 +16,12 @@ public class UserService {
 	private static final int NICKNAME_SUFFIX_LENGTH = 6;
 
 	private final UserRepository userRepository;
+	private final UserSolvedProblemRepository userSolvedProblemRepository;
 	private final SecureRandom random = new SecureRandom();
 
-	public UserService(UserRepository userRepository) {
+	public UserService(UserRepository userRepository, UserSolvedProblemRepository userSolvedProblemRepository) {
 		this.userRepository = userRepository;
+		this.userSolvedProblemRepository = userSolvedProblemRepository;
 	}
 
 	/**
@@ -32,9 +34,10 @@ public class UserService {
 	}
 
 	@Transactional(readOnly = true)
-	public User get(long id) {
-		return userRepository.findById(id)
+	public UserResponse getProfile(long id) {
+		User user = userRepository.findById(id)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "회원이 없습니다: " + id));
+		return new UserResponse(user.getId(), user.getNickname(), user.getEmail(), userSolvedProblemRepository.countByIdUserId(id));
 	}
 
 	private String uniqueNickname() {
