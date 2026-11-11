@@ -14,7 +14,6 @@ import {
 
 type ColorOf = (token: string) => string
 
-// 목업의 도트 지도를 그대로 옮긴 방 배경: 체크무늬 나무 바닥, 벽, 창문, 전광판, 러그. 책상은 따로 그린다(앞뒤 순서 때문에)
 export function drawRoom(context: CanvasRenderingContext2D, colorOf: ColorOf) {
   function rect(
     token: string,
@@ -60,7 +59,6 @@ export function drawRoom(context: CanvasRenderingContext2D, colorOf: ColorOf) {
   rect('--map-frame', BOARD.x, BOARD.y, BOARD.width, BOARD.height)
 }
 
-// 책상 하나 (노트북 포함). lit = 누군가 앉아 노트북 화면이 켜졌는지
 export function drawDesk(
   context: CanvasRenderingContext2D,
   colorOf: ColorOf,

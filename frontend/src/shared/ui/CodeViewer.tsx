@@ -17,7 +17,6 @@ const VIEWER_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
 
 const MAX_VISIBLE_LINES = 16
 
-// 줄 수만큼 높이를 잡고, 길면 16줄에서 멈춘 뒤 안에서 스크롤한다
 export function CodeViewer({
   code,
   language,

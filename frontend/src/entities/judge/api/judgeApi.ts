@@ -34,7 +34,6 @@ export function requestJudge(
   })
 }
 
-// 실행·제출은 접수(202)만 바로 끝나고 채점은 서버 작업 스레드에서 돈다. 끝날 때까지 1초마다 다시 조회한다
 export function runResultQuery(runId: number) {
   return queryOptions({
     queryKey: ['runs', runId],

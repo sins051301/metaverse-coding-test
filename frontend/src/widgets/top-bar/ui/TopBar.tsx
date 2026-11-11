@@ -17,7 +17,6 @@ export function TopBar() {
     mutationFn: logout,
     onSuccess: () => {
       queryClient.setQueryData(CURRENT_USER_QUERY_KEY, null)
-      // 라운지 신원은 연결할 때 정해지므로, 로그아웃했으면 다시 연결해 게스트로 들어간다
       loungeConnection.restart()
     },
   })

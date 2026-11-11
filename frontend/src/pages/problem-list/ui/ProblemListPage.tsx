@@ -4,7 +4,6 @@ import { Link } from 'react-router'
 import { problemListQuery } from '@/entities/problem/api/problemQueries'
 import styles from './ProblemListPage.module.css'
 
-// 책상에 앉아 노트북을 켜면 처음 보이는 화면. 상단 바와 왼쪽 지도는 공통 레이아웃(LoungeLayout)이 그린다
 export function ProblemListPage() {
   const { data: problems, isError } = useQuery(problemListQuery())
   const [selectedLevel, setSelectedLevel] = useState<number | null>(null)

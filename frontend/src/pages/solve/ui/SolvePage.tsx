@@ -21,7 +21,6 @@ export function SolvePage() {
   }
 
   return (
-    // 문제가 바뀌면 채점 결과·에디터 상태를 새로 시작한다. 상단 바와 왼쪽 지도는 공통 레이아웃(LoungeLayout)이 그린다
     <ProblemWorkspace
       key={problemId}
       problemId={problemId}

@@ -10,7 +10,6 @@ import { formatDateTime } from '@/shared/lib/formatDateTime'
 import { Button } from '@/shared/ui/Button'
 import styles from './SubmissionHistory.module.css'
 
-// 코드 보기는 Monaco를 쓰므로 에디터와 같은 덩어리를 행을 펼칠 때 받는다
 const CodeViewer = lazy(() =>
   import('@/shared/ui/CodeViewer').then((module) => ({
     default: module.CodeViewer,

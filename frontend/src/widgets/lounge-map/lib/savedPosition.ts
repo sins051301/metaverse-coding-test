@@ -5,7 +5,6 @@ const POSITION_KEY = 'codingtest:v1:loungePosition'
 
 type Position = { x: number; y: number }
 
-// 마지막으로 서 있던 자리. 지도가 바뀌어 저장된 자리가 걸을 수 있는 범위 밖이면 버린다
 export function readSavedPosition(): Position | null {
   const saved = readStorage(localStorage, POSITION_KEY)
   if (saved === null) {

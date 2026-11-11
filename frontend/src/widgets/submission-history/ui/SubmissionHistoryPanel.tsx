@@ -5,7 +5,6 @@ import { Button } from '@/shared/ui/Button'
 import { SubmissionHistoryTable } from './SubmissionHistoryTable'
 import styles from './SubmissionHistory.module.css'
 
-// 지문 자리를 대신해 보여 준다. 이 패널이 그려질 때마다 목록을 새로 받아 방금 낸 제출까지 보인다
 export function SubmissionHistoryPanel({ problemId }: { problemId: number }) {
   const { data: user } = useQuery(currentUserQuery())
 

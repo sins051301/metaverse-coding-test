@@ -7,7 +7,6 @@ type ResetCodeButtonProps = {
   onConfirm: () => void
 }
 
-// 브라우저 기본 <dialog>의 showModal을 쓴다. 뒤 화면 클릭 막기·Esc로 닫기·포커스 가두기가 기본으로 된다
 export function ResetCodeButton({ disabled, onConfirm }: ResetCodeButtonProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
 

@@ -3,8 +3,6 @@ import * as monaco from 'monaco-editor'
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker'
 import TypeScriptWorker from 'monaco-editor/language/typescript/ts.worker?worker'
 
-// @monaco-editor/react는 기본으로 CDN에서 Monaco를 받는다. 설치한 패키지를 쓰도록 바꿔 버전을 고정하고 외부 요청을 없앤다.
-// 이 모듈은 React.lazy로 불러오는 에디터·코드 보기 컴포넌트만 import하므로, 아래 초기화는 Monaco가 처음 필요할 때 한 번만 돈다.
 self.MonacoEnvironment = {
   getWorker: (_workerId, label) =>
     label === 'typescript' || label === 'javascript'
@@ -15,7 +13,6 @@ loader.config({ monaco })
 
 export const MONACO_THEME = 'pixel-lounge'
 
-// Monaco 테마는 hex만 받는다. tokens.css의 oklch 값을 sRGB로 바꾼 값이다
 monaco.editor.defineTheme(MONACO_THEME, {
   base: 'vs-dark',
   inherit: true,
@@ -42,7 +39,6 @@ monaco.editor.defineTheme(MONACO_THEME, {
   },
 })
 
-// 글꼴이 늦게 도착하면 Monaco가 기본 글꼴 폭으로 커서 위치를 계산해 둔다. 도착한 뒤 다시 잰다
 void document.fonts.ready.then(() => monaco.editor.remeasureFonts())
 
 export const MONACO_LINE_HEIGHT = 24

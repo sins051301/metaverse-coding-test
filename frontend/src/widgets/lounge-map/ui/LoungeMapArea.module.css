@@ -48,7 +48,6 @@
   min-height: 0;
 }
 
-/* 패널에서는 목업처럼 지도를 위쪽 320px 에만 두고, 아래는 옆자리 목록(2단계) 자리로 남긴다 */
 .panel .mapBox {
   flex: none;
   height: 320px;

@@ -10,7 +10,6 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      // 4xx(로그인 필요, 없는 문제 등)는 다시 보내도 결과가 같아서 서버 오류·네트워크 오류만 재시도한다
       retry: (failureCount, error) =>
         !(error instanceof HttpError && error.status < 500) &&
         failureCount < MAX_RETRY,
