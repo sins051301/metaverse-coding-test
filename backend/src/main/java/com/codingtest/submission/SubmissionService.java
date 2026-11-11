@@ -74,7 +74,8 @@ public class SubmissionService {
 	@Transactional(readOnly = true)
 	public SubmissionHistoryResponse getHistory(long userId, long problemId, int page, int size) {
 		problemService.getProblem(problemId);
-		return SubmissionHistoryResponse.from(submissionRepository.findSummaries(userId, problemId, PageRequest.of(page, size)));
+		Long totalCount = page == 0 ? submissionRepository.countByUserIdAndProblemId(userId, problemId) : null;
+		return SubmissionHistoryResponse.of(submissionRepository.findSummaries(userId, problemId, PageRequest.of(page, size)), totalCount);
 	}
 
 	@Transactional(readOnly = true)

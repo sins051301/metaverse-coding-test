@@ -63,11 +63,37 @@ class SubmissionHistoryTest {
 		JsonNode firstPage = history(user, 1, Map.of("size", "2"));
 		assertThat(ids(firstPage)).containsExactly(newest, middle);
 		assertThat(firstPage.path("hasNext").asBoolean()).isTrue();
+		assertThat(firstPage.path("totalCount").asLong()).isEqualTo(3);
 		assertThat(firstPage.path("submissions").get(0).has("sourceCode")).isFalse();
 
 		JsonNode secondPage = history(user, 1, Map.of("size", "2", "page", "1"));
 		assertThat(ids(secondPage)).containsExactly(oldest);
 		assertThat(secondPage.path("hasNext").asBoolean()).isFalse();
+		assertThat(secondPage.path("totalCount").isNull()).isTrue();
+	}
+
+	@Test
+	@DisplayName("제출 단건 조회에는 그때 낸 소스 코드가 들어 있다 (내역에서 행을 펼칠 때 쓴다)")
+	void returnsSourceCodeForSingleSubmission() throws Exception {
+		JudgeApiClient user = newUser();
+		long submissionId = insertSubmission(user.me().path("id").asLong(), 1);
+
+		MvcTestResult result = mockMvc.get().uri("/api/submissions/{id}", submissionId)
+				.header(HttpHeaders.AUTHORIZATION, user.authorization()).exchange();
+
+		assertThat(result).hasStatusOk();
+		JsonNode submission = JSON_MAPPER.readTree(result.getResponse().getContentAsString(StandardCharsets.UTF_8));
+		assertThat(submission.path("sourceCode").asString()).isEqualTo("function solution() {}");
+	}
+
+	@Test
+	@DisplayName("전체 개수는 (user_id, problem_id) 인덱스만으로 센다 (EXPLAIN 에 Using index)")
+	void countsWithIndexOnly() {
+		Map<String, Object> plan = jdbcTemplate.queryForMap(
+				"EXPLAIN SELECT COUNT(*) FROM submissions WHERE user_id = 1 AND problem_id = 1");
+
+		assertThat(plan.get("key")).isEqualTo("ix_submissions_user_problem");
+		assertThat(String.valueOf(plan.get("Extra"))).contains("Using index");
 	}
 
 	@Test

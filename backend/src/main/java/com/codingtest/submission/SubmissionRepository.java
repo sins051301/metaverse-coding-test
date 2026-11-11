@@ -41,4 +41,9 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 			+ "order by submission.id desc")
 	Slice<SubmissionSummary> findSummaries(long userId, long problemId, Pageable pageable);
 
+	/**
+	 * 제출 내역 머리줄의 "N개의 제출". 같은 (user_id, problem_id) 인덱스 안에서 개수만 세므로 테이블 행은 읽지 않는다 (EXPLAIN: Using index).
+	 */
+	long countByUserIdAndProblemId(long userId, long problemId);
+
 }
