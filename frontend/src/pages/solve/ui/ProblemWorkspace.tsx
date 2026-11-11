@@ -19,7 +19,7 @@ import { Button } from '@/shared/ui/Button'
 import { JudgeResultPanel } from '@/widgets/judge-result/ui/JudgeResultPanel'
 import { ProblemStatement } from '@/widgets/problem-statement/ui/ProblemStatement'
 import { SubmissionHistoryPanel } from '@/widgets/submission-history/ui/SubmissionHistoryPanel'
-import styles from './ProblemWorkspace.module.css'
+import * as styles from './ProblemWorkspace.css'
 
 const CodeEditor = lazy(() =>
   import('@/features/edit-code/ui/CodeEditor').then((module) => ({

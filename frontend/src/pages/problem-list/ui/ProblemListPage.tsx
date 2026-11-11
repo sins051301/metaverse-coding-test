@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { problemListQuery } from '@/entities/problem/api/problemQueries'
-import styles from './ProblemListPage.module.css'
+import * as styles from './ProblemListPage.css'
 
 export function ProblemListPage() {
   const { data: problems, isError } = useQuery(problemListQuery())

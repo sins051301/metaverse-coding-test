@@ -10,7 +10,7 @@ import {
 } from '@/entities/lounge/model/loungeStore'
 import { LoungeMapArea } from '@/widgets/lounge-map/ui/LoungeMapArea'
 import { TopBar } from '@/widgets/top-bar/ui/TopBar'
-import styles from './LoungeLayout.module.css'
+import * as styles from './LoungeLayout.css'
 
 export const LOUNGE_PATH = '/'
 export const PROBLEM_LIST_PATH = '/problems'

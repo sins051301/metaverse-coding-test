@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { Button } from '@/shared/ui/Button'
-import styles from './ResetCodeButton.module.css'
+import * as styles from './ResetCodeButton.css'
 
 type ResetCodeButtonProps = {
   disabled: boolean

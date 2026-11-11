@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from 'react-router'
 import { router } from '@/app/router'
 import { HttpError } from '@/shared/api/httpClient'
-import styles from './App.module.css'
+import * as styles from './App.css'
 
 const MAX_RETRY = 2
 
