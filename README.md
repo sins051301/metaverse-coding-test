@@ -227,6 +227,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 
 에러는 표준 형식(RFC 9457 `ProblemDetail`): 없는 문제 404, 빈 코드·64K자 초과·지원하지 않는 언어 400. 로그인이 필요한 API에 토큰이 없거나 틀리면 401 (Google 로그인 화면으로 보내지 않음).
 채점이 밀리면 429: 내 끝나지 않은 제출·실행이 이미 2건이거나, 전체 대기가 50건일 때. 동시에 채점하는 수는 4건으로 제한하고 나머지는 `PENDING`으로 차례를 기다린다. 비동기 채점의 동작은 7장 "비동기 채점", 제한의 동작과 이유는 7장 "부하 제한".
+| GET | `/api/problems/{id}/submissions?page=0&size=20` | 이 문제에 낸 내 제출 내역, 최신순 (`id`, `language`, `status`, `verdict`, `score`, `createdAt`, `judgedAt`). 소스 코드·테스트별 결과는 빠짐. `hasNext`가 `true`면 `page+1`. `size`는 1~50. **로그인 필요** |
 
 ---
 
@@ -347,12 +348,6 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 
 모두 AC. 단독 제출(Java 약 5.3초, JS 약 1.0초, 7장 비용 표)보다 느려진 만큼이 동시 실행의 비용이다. `created_at`·`judged_at`이 초 단위 `DATETIME`이라 건별 시간은 1초 단위로 반올림된다. 7단계에서 대기열을 넣은 뒤 같은 테스트로 비교한다.
 
-### 부하 대응 (나중에 적용)
-| 시점 | 방법 |
-|---|---|
-| MVP (7단계, 적용함) | 동시 채점 수 제한(세마포어) + 접수 제한(대기열 상한, 유저별 진행 중 개수) + Docker 호출 시간 제한. 위 "부하 제한" |
-| (보류) | 첫 실패에서 중단: 프로그래머스식 전체 실행과 맞지 않아 제거함. 무한 루프 제출은 "시간 제한 × 테스트 수"만큼 걸린다 |
-| 사용자 증가 | 컨테이너 미리 띄워두기(pre-warm, 1회용), JVM CDS/AOT 캐시, 같은 코드 결과 캐시 |
 ### 부하 제한 (7단계: 동시 채점 수 · 접수 제한 · Docker 호출 시간 제한)
 
 임시값과 다시 정할 계획은 [`docs/tuning.md`](docs/tuning.md).
@@ -451,10 +446,60 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 
 | 컴파일 단축 (측정 완료, 미적용) | `javac`에 `-J-XX:TieredStopAtLevel=1`(C1 JIT만 사용): 1코어에서 3.2초 → 1.5초. 래퍼를 이미지 빌드 시 미리 컴파일: 약 1초 추가 단축 예상. 유저 코드 실행에도 C1만 쓰는 안은 3초 이하 실행에서 같거나 더 빨랐음(1회 측정) → 반복 측정 후 결정 |
 | 서버 1대 초과 | 채점 워커 분리 + 메시지 큐(Redis Streams/RabbitMQ) + 오토스케일 |
-| 제출 내역 화면을 만들 때 | `submissions`에 (`user_id`, `created_at`) 인덱스(전체 내역 최신순), 요약 컬럼 `max_time_ms`·`max_memory_kb`(목록에서 테스트 결과 집계 생략, 기존 데이터는 보관된 테스트 결과로 채움) |
+| 내 전체 제출 목록을 만들 때 (문제별 내역은 만듦, 위 "제출 내역") | `submissions`에 (`user_id`, `created_at`) 인덱스(전체 내역 최신순), 요약 컬럼 `max_time_ms`·`max_memory_kb`(목록에서 테스트 결과 집계 생략, 기존 데이터는 보관된 테스트 결과로 채움) |
 
 ---
 
+### 제출 내역 (`GET /api/problems/{id}/submissions`)
+
+**흐름**: 프론트가 문제 화면의 [제출 내역] 탭을 열면 `?page=0&size=20` 호출 → 최신 20건과 `hasNext` 응답 → `hasNext`가 `true`면 [더 보기]로 `page=1` 호출 → 한 줄을 누르면 기존 `GET /api/submissions/{id}`로 코드·테스트별 결과를 본다.
+
+#### 공부할 개념
+
+**1. InnoDB 보조 인덱스에는 기본키가 숨어 있다**
+- InnoDB 테이블은 기본키(`id`) 순서로 행 자체를 저장한다(클러스터드 인덱스). 그 밖의 인덱스(보조 인덱스)는 "인덱스 컬럼 값 + 그 행의 기본키"를 저장하고, 행이 필요하면 그 기본키로 다시 찾아간다.
+- 그래서 `ix_submissions_user_problem (user_id, problem_id)`는 실제로 `(user_id, problem_id, id)` 순서로 정렬돼 있다.
+- "이 유저·이 문제를 `id` 내림차순으로 20개"는 인덱스에서 그 구간을 찾아 **뒤에서부터 20개 읽고 멈추면** 끝난다. 정렬(filesort)이 필요 없다. 새 인덱스를 만들지 않은 이유다.
+- `created_at`이 아니라 `id`로 정렬하는 것도 이 때문이다. `id`는 `AUTO_INCREMENT`라 늦게 낸 제출일수록 크므로 순서가 같다. `created_at`으로 정렬하면 (`user_id`, `problem_id`, `created_at`) 인덱스를 따로 만들어야 한다.
+- 확인 방법: `EXPLAIN SELECT ... WHERE user_id = 1 AND problem_id = 1 ORDER BY id DESC LIMIT 21`의 `key`가 `ix_submissions_user_problem`이고, `Extra`에 `Using filesort`가 없다 (`SubmissionHistoryTest#usesIndexOrderWithoutSorting`).
+
+**2. Page vs Slice (페이지 나누기)**
+| | Page | Slice (선택) |
+|---|---|---|
+| 아는 것 | 전체 개수, 전체 페이지 수 | 다음 페이지가 있는지만 |
+| 쿼리 | 목록 + `COUNT(*)` 2개 | 목록 1개 (요청한 개수보다 1개 더 읽어 다음이 있는지 판단) |
+| 맞는 화면 | 1, 2, 3 ... 페이지 번호 | [더 보기], 무한 스크롤 |
+- 제출 내역은 "최근 것부터 보다가 필요하면 더 보기"라 전체 개수가 필요 없다. 그래서 `COUNT` 쿼리를 아끼는 `Slice`를 골랐다.
+- `Slice`를 그대로 JSON으로 내보내지 않고 `SubmissionHistoryResponse(submissions, hasNext)`로 옮긴다. 그대로 내보내면 `pageable`·`sort` 같은 내부 구조가 응답에 섞이고 Spring Data 버전에 따라 모양이 바뀐다.
+- 한계: `page` 번호 방식(OFFSET)은 뒤 페이지로 갈수록 앞의 행을 읽고 버리는 비용이 늘어난다. 한 문제에 수천 건을 내는 일은 드물어 지금은 괜찮다. 커지면 "마지막으로 본 `id`보다 작은 것"으로 찾는 커서 방식(`WHERE id < :lastId`)으로 바꾼다.
+
+**3. 필요한 컬럼만 읽기 (JPQL 생성자 표현식)**
+- `select new com.codingtest.submission.SubmissionSummary(submission.id, ...)`처럼 쓰면 엔티티 대신 필요한 컬럼만 읽어 record로 바로 만든다(DTO 프로젝션).
+- 엔티티(`Submission`)로 읽으면 행마다 `source_code`(MEDIUMTEXT, 최대 64K자)까지 가져온다. 20건이면 최대 1MB를 읽고 버리는 셈이다.
+
+**4. 파라미터 검증 (`@Min`, `@Max`)**
+- 컨트롤러 파라미터에 `@Min(1) @Max(50)`을 바로 붙이면 Spring MVC 6.1+가 메서드 검증을 해서 범위를 벗어나면 400을 돌려준다.
+- `size` 상한은 `size=100000` 같은 요청으로 한 번에 너무 많은 행을 읽지 않게 하려는 것이다.
+
+#### 선택과 이유
+| 항목 | 선택 | 이유 (대안) |
+|---|---|---|
+| 범위 | 문제별 내 제출만 | 프로그래머스의 "제출 내역" 탭과 같다. 내 전체 제출 목록은 (`user_id`, `created_at`) 인덱스가 따로 필요해 화면이 생길 때 추가 |
+| 실행(`runs`) 내역 | 넣지 않음 | 실행은 예제만 돌려 보는 연습이라 기록으로 보여 줄 필요가 적다 (프로그래머스도 제출만 보여 줌) |
+| 없는 문제 | 404 | 제출 API와 같은 규칙. 빈 목록이면 "문제 번호가 틀렸다"를 알 수 없다 |
+| 응답 항목 | 판정·점수·언어·시각만 | 목록에서는 코드를 보지 않는다. 자세한 내용은 기존 단건 조회로 |
+
+#### 검증 (`SubmissionHistoryTest`)
+- 내 제출만 최신순, 다른 문제·남의 제출은 섞이지 않음, `size=2`로 나눴을 때 `hasNext`, 응답에 `sourceCode`가 없음
+- 없는 문제 404, `size` 0·51은 400, 토큰 없으면 401
+- `EXPLAIN`으로 인덱스 사용·정렬 없음 확인 (위 개념 1)
+
+### 부하 대응 (나중에 적용)
+| 시점 | 방법 |
+|---|---|
+| MVP (7단계, 적용함) | 동시 채점 수 제한(세마포어) + 접수 제한(대기열 상한, 유저별 진행 중 개수) + Docker 호출 시간 제한. 위 "부하 제한" |
+| (보류) | 첫 실패에서 중단: 프로그래머스식 전체 실행과 맞지 않아 제거함. 무한 루프 제출은 "시간 제한 × 테스트 수"만큼 걸린다 |
+| 사용자 증가 | 컨테이너 미리 띄워두기(pre-warm, 1회용), JVM CDS/AOT 캐시, 같은 코드 결과 캐시 |
 ## 8. DB 설계 (MySQL, Flyway로 생성)
 
 ERD: [`docs/erd.dbml`](docs/erd.dbml) (dbdiagram.io에 붙여 넣어 보기). 실제 테이블: `backend/src/main/resources/db/migration/V1__create_tables.sql`.
