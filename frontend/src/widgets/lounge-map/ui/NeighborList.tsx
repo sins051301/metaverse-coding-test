@@ -1,9 +1,13 @@
-import { useLoungeState } from '@/entities/lounge/model/loungeStore'
+import {
+  loungeStore,
+  useLoungeState,
+} from '@/entities/lounge/model/loungeStore'
 import {
   type SeatedNeighbor,
   useSeatedNeighbors,
 } from '@/entities/lounge/model/rosterStore'
 import { useNow } from '@/shared/lib/useNow'
+import { Button } from '@/shared/ui/Button'
 import { DESKS } from '@/widgets/lounge-map/model/loungeMap'
 import * as styles from './LoungeOverlays.css'
 
@@ -54,6 +58,13 @@ export function NeighborList() {
           <li key={neighbor.id} className={styles.neighbor}>
             <span className={styles.who}>{neighbor.nickname}</span>
             <span className={styles.doing}>{statusOf(neighbor, now)}</span>
+            <Button
+              size="small"
+              variant="quiet"
+              onClick={() => loungeStore.requestSpectate(neighbor.id)}
+            >
+              관전
+            </Button>
           </li>
         ))}
       </ul>

@@ -5,6 +5,7 @@ import {
 } from '@/entities/user/api/userQueries'
 import { loungeConnection } from '@/entities/lounge/api/loungeConnection'
 import { useOnlineCount } from '@/entities/lounge/model/rosterStore'
+import { PROBLEM_LIST_QUERY_KEY } from '@/entities/problem/api/problemQueries'
 import { logout, startLogin } from '@/features/auth/model/login'
 import { Button } from '@/shared/ui/Button'
 import * as styles from './TopBar.css'
@@ -17,6 +18,10 @@ export function TopBar() {
     mutationFn: logout,
     onSuccess: () => {
       queryClient.setQueryData(CURRENT_USER_QUERY_KEY, null)
+      void queryClient.invalidateQueries({
+        queryKey: PROBLEM_LIST_QUERY_KEY,
+        exact: true,
+      })
       loungeConnection.restart()
     },
   })

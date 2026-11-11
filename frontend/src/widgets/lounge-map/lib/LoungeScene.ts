@@ -8,10 +8,7 @@ import {
   loungeStore,
   type LoungeState,
 } from '@/entities/lounge/model/loungeStore'
-import {
-  occupiedDeskIds,
-  rosterStore,
-} from '@/entities/lounge/model/rosterStore'
+import { rosterStore } from '@/entities/lounge/model/rosterStore'
 import {
   applyCatLook,
   type CatView,
@@ -277,28 +274,37 @@ export class LoungeScene extends Phaser.Scene {
   }
 
   private updateNearbyDesk() {
-    const occupied = occupiedDeskIds()
-    const nearest = DESKS.filter((desk) => !occupied.has(desk.id))
-      .map((desk) => {
-        const spot = deskFrontSpot(desk)
-        return {
-          desk,
-          distance: Math.hypot(spot.x - this.cat.x, spot.y - this.cat.y),
-        }
-      })
-      .toSorted((left, right) => left.distance - right.distance)[0]
+    const { avatars, myAvatarId } = rosterStore.getState()
+    const owners = new Map(
+      [...avatars.values()]
+        .filter((avatar) => avatar.id !== myAvatarId && avatar.deskId !== null)
+        .map((avatar) => [avatar.deskId, avatar]),
+    )
+    const nearest = DESKS.map((desk) => {
+      const spot = deskFrontSpot(desk)
+      return {
+        desk,
+        distance: Math.hypot(spot.x - this.cat.x, spot.y - this.cat.y),
+      }
+    }).toSorted((left, right) => left.distance - right.distance)[0]
 
-    if (nearest === undefined || nearest.distance > DESK_REACH) {
+    if (nearest.distance > DESK_REACH) {
       loungeStore.setNearbyDesk(null)
       return
     }
+    const owner = owners.get(nearest.desk.id)
     if (Phaser.Input.Keyboard.JustDown(this.keys.F)) {
-      loungeConnection.requestSit(nearest.desk.id)
+      if (owner) {
+        loungeStore.requestSpectate(owner.id)
+      } else {
+        loungeConnection.requestSit(nearest.desk.id)
+      }
       return
     }
     const camera = this.cameras.main
     loungeStore.setNearbyDesk({
       deskId: nearest.desk.id,
+      owner: owner ? { avatarId: owner.id, nickname: owner.nickname } : null,
       screenX: Math.round(
         (nearest.desk.x + DESK_WIDTH / 2 - camera.worldView.x) * camera.zoom,
       ),

@@ -51,7 +51,10 @@ export function LoungeMap() {
           className={styles.tooltip}
           style={{ left: nearbyDesk.screenX, top: nearbyDesk.screenY }}
         >
-          <kbd className={styles.key}>F</kbd>책상에 앉기
+          <kbd className={styles.key}>F</kbd>
+          {nearbyDesk.owner
+            ? `${nearbyDesk.owner.nickname}님 코드 구경하기`
+            : '책상에 앉기'}
         </div>
       ) : null}
     </div>
