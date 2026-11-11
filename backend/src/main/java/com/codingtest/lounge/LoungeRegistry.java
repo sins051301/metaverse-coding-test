@@ -142,6 +142,10 @@ class LoungeRegistry {
 		return Optional.ofNullable(removed);
 	}
 
+	Optional<AvatarState> find(String avatarId) {
+		return Optional.ofNullable(avatars.get(avatarId));
+	}
+
 	List<AvatarState> all() {
 		return List.copyOf(avatars.values());
 	}

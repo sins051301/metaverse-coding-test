@@ -8,6 +8,8 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
+import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
 /**
  * STOMP 우체국 설정.
@@ -26,6 +28,8 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class LoungeWebSocketConfiguration implements WebSocketMessageBrokerConfigurer {
 
 	private static final long HEARTBEAT_MILLIS = 10_000;
+	// 관전 시작 때 코드 전체(최대 64K자, Yjs 바이트를 base64 로 바꾸면 더 커짐)가 메시지 하나로 오간다. 기본 제한(STOMP 64KB, Tomcat 8KB)보다 크게
+	private static final int MESSAGE_SIZE_LIMIT_BYTES = 512 * 1024;
 
 	private final LoungeHandshakeHandler loungeHandshakeHandler;
 	private final String frontendUrl;
@@ -42,6 +46,21 @@ public class LoungeWebSocketConfiguration implements WebSocketMessageBrokerConfi
 				.setHandshakeHandler(loungeHandshakeHandler);
 		// 받은 메시지는 스레드 여러 개가 나눠 처리한다. 순서를 지키라고 하지 않으면 한 사람이 보낸 이동 1, 2, 3 이 2, 1, 3 으로 처리될 수 있다
 		registry.setPreserveReceiveOrder(true);
+	}
+
+	@Override
+	public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
+		registration.setMessageSizeLimit(MESSAGE_SIZE_LIMIT_BYTES);
+		registration.setSendBufferSizeLimit(MESSAGE_SIZE_LIMIT_BYTES * 2);
+	}
+
+	// Tomcat 이 WebSocket 메시지를 받는 버퍼. 이보다 큰 메시지는 STOMP 까지 가기 전에 연결이 끊긴다(1009 Message Too Big)
+	@Bean
+	ServletServerContainerFactoryBean webSocketContainer() {
+		ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
+		container.setMaxTextMessageBufferSize(MESSAGE_SIZE_LIMIT_BYTES);
+		container.setMaxBinaryMessageBufferSize(MESSAGE_SIZE_LIMIT_BYTES);
+		return container;
 	}
 
 	@Override
