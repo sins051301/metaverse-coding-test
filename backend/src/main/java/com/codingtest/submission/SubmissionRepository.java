@@ -17,4 +17,10 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 	@Query("select submission.id from Submission submission where submission.status in :statuses order by submission.id")
 	List<Long> findIdsByStatusIn(Collection<JudgeStatus> statuses);
 
+	// 접수 제한(JudgeAdmission)용. status 인덱스로 센다.
+	long countByStatusIn(Collection<JudgeStatus> statuses);
+
+	// (user_id, problem_id) 인덱스의 앞 칼럼 user_id 로 그 유저 행만 찾은 뒤 status 를 거른다.
+	long countByUserIdAndStatusIn(long userId, Collection<JudgeStatus> statuses);
+
 }

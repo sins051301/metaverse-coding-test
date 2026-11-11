@@ -15,4 +15,8 @@ public interface RunRepository extends JpaRepository<Run, Long> {
 	@Query("select run.id from Run run where run.status in :statuses order by run.id")
 	List<Long> findIdsByStatusIn(Collection<JudgeStatus> statuses);
 
+	long countByStatusIn(Collection<JudgeStatus> statuses);
+
+	long countByUserIdAndStatusIn(long userId, Collection<JudgeStatus> statuses);
+
 }

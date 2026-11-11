@@ -32,7 +32,8 @@ class SandboxRunnerTest {
 
 	@BeforeAll
 	static void setUp() {
-		dockerClient = new DockerClientConfiguration().dockerClient();
+		// application.properties 의 judge.docker.* 와 같은 값.
+		dockerClient = new DockerClientConfiguration().dockerClient(Duration.ofSeconds(3), Duration.ofMinutes(2));
 		sandboxRunner = new SandboxRunner(dockerClient);
 	}
 

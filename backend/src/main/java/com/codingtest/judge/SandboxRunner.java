@@ -45,6 +45,8 @@ public class SandboxRunner {
 	private static final String TMPFS_OPTIONS = "rw,noexec,nosuid,nodev,size=32m,mode=1777";
 	private static final Duration COMPILE_TIMEOUT = Duration.ofSeconds(10);
 	private static final Duration CONTAINER_OVERHEAD = Duration.ofSeconds(15);
+	// attach 연결이 맺어질 때까지 기다리는 최대 시간. 평소 0.1~0.2초 (README 7장 비용).
+	private static final Duration ATTACH_TIMEOUT = Duration.ofSeconds(10);
 	private static final JsonMapper JSON_MAPPER = JsonMapper.builder().build();
 
 	private final DockerClient dockerClient;
@@ -130,11 +132,14 @@ public class SandboxRunner {
 			}
 		};
 		try {
-			dockerClient.attachContainerCmd(containerId)
+			boolean attached = dockerClient.attachContainerCmd(containerId)
 					.withStdOut(true)
 					.withFollowStream(true)
 					.exec(callback)
-					.awaitStarted();
+					.awaitStarted(ATTACH_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+			if (!attached) {
+				throw new IllegalStateException("채점 컨테이너에 " + ATTACH_TIMEOUT + " 안에 연결하지 못했습니다: " + containerId);
+			}
 			dockerClient.startContainerCmd(containerId).exec();
 			if (!callback.awaitCompletion(containerTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
 				throw new IllegalStateException("채점 컨테이너가 " + containerTimeout + " 안에 끝나지 않았습니다: " + containerId);

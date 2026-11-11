@@ -4,6 +4,7 @@ import com.codingtest.judge.Judge;
 import com.codingtest.judge.JudgeExecutorConfiguration;
 import com.codingtest.judge.JudgeMode;
 import com.codingtest.judge.JudgeResult;
+import com.codingtest.judge.JudgeSlots;
 import com.codingtest.judge.Verdict;
 import com.codingtest.problem.Problem;
 import com.codingtest.problem.ProblemService;
@@ -31,6 +32,9 @@ import java.time.Instant;
  * 채점(Docker 실행)은 수 초가 걸린다. 메서드 전체를 트랜잭션으로 묶으면 그동안 DB 연결을 붙잡고 있어 연결이 금방 바닥난다.
  * 그래서 짧은 트랜잭션 두 개(JUDGING 표시, 결과 저장)로 나누고, 그 사이의 채점은 트랜잭션 밖에서 한다.
  * (같은 클래스 안의 다른 @Transactional 메서드를 this 로 부르면 프록시를 거치지 않아 트랜잭션이 걸리지 않는다는 점도 이유다.)
+ *
+ * <p>JudgeSlots: 채점 자리(허가증)를 받을 때까지 PENDING 인 채로 기다리고, 자리를 받은 뒤에야 JUDGING 으로 바꾼다.
+ * 그래서 화면에서 "대기 중"(PENDING)과 "채점 중"(JUDGING)이 구분된다.
  */
 @Component
 public class SubmissionJudgeWorker {
@@ -42,24 +46,34 @@ public class SubmissionJudgeWorker {
 	private final UserSolvedProblemRepository userSolvedProblemRepository;
 	private final ProblemService problemService;
 	private final Judge judge;
+	private final JudgeSlots judgeSlots;
 	private final TransactionTemplate transactionTemplate;
 
 	public SubmissionJudgeWorker(SubmissionRepository submissionRepository, SubmissionTestResultRepository submissionTestResultRepository,
 			UserSolvedProblemRepository userSolvedProblemRepository, ProblemService problemService, Judge judge,
-			TransactionTemplate transactionTemplate) {
+			JudgeSlots judgeSlots, TransactionTemplate transactionTemplate) {
 		this.submissionRepository = submissionRepository;
 		this.submissionTestResultRepository = submissionTestResultRepository;
 		this.userSolvedProblemRepository = userSolvedProblemRepository;
 		this.problemService = problemService;
 		this.judge = judge;
+		this.judgeSlots = judgeSlots;
 		this.transactionTemplate = transactionTemplate;
 	}
 
 	@Async(JudgeExecutorConfiguration.JUDGE_EXECUTOR)
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
 	public void onSubmissionCreated(SubmissionCreatedEvent event) {
-		long submissionId = event.submissionId();
+		try {
+			judgeSlots.runInSlot(() -> judge(event.submissionId()));
+		} catch (InterruptedException exception) {
+			// 자리를 기다리다 서버가 꺼지는 경우. DB 에는 PENDING 으로 남아 있어 다음 시작 때 JudgeRecovery 가 다시 채점한다.
+			Thread.currentThread().interrupt();
+			log.warn("제출 {} 채점 대기 중 중단됨 (다음 서버 시작 때 다시 채점)", event.submissionId());
+		}
+	}
 
+	private void judge(long submissionId) {
 		// 트랜잭션 1: JUDGING 으로 표시. 엔티티 값을 바꾸면 커밋할 때 JPA 가 UPDATE 를 만들어 준다 (변경 감지, dirty checking).
 		Submission submission = transactionTemplate.execute(status -> {
 			Submission found = submissionRepository.findById(submissionId).orElseThrow();

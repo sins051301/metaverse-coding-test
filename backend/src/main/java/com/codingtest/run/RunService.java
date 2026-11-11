@@ -1,5 +1,6 @@
 package com.codingtest.run;
 
+import com.codingtest.judge.JudgeAdmission;
 import com.codingtest.judge.JudgeStatus;
 import com.codingtest.judge.SourceCodeRequest;
 import com.codingtest.judge.TestResultResponse;
@@ -14,7 +15,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * 흐름과 이유는 SubmissionService 의 주석과 같다: PENDING 저장 → 커밋 → 작업 스레드(RunJudgeWorker)가 채점.
+ * 흐름과 이유는 SubmissionService 의 주석과 같다: 접수 제한 검사 → PENDING 저장 → 커밋 → 작업 스레드(RunJudgeWorker)가 채점.
  */
 @Service
 public class RunService {
@@ -22,19 +23,22 @@ public class RunService {
 	private final RunRepository runRepository;
 	private final RunTestResultRepository runTestResultRepository;
 	private final ProblemService problemService;
+	private final JudgeAdmission judgeAdmission;
 	private final ApplicationEventPublisher eventPublisher;
 
 	public RunService(RunRepository runRepository, RunTestResultRepository runTestResultRepository,
-			ProblemService problemService, ApplicationEventPublisher eventPublisher) {
+			ProblemService problemService, JudgeAdmission judgeAdmission, ApplicationEventPublisher eventPublisher) {
 		this.runRepository = runRepository;
 		this.runTestResultRepository = runTestResultRepository;
 		this.problemService = problemService;
+		this.judgeAdmission = judgeAdmission;
 		this.eventPublisher = eventPublisher;
 	}
 
 	@Transactional
 	public Run run(long userId, long problemId, SourceCodeRequest request) {
 		problemService.getProblem(problemId);
+		judgeAdmission.checkAcceptable(userId);
 		Run run = runRepository.save(new Run(userId, problemId, request.language(), request.sourceCode(), Instant.now()));
 		eventPublisher.publishEvent(new RunCreatedEvent(run.getId()));
 		return run;
