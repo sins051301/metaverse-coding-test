@@ -1,0 +1,89 @@
+.recentSolves {
+  position: absolute;
+  top: var(--space-sm);
+  right: var(--space-sm);
+  width: 200px;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-panel);
+  background: color-mix(in oklab, var(--color-paper-2) 85%, transparent);
+  font-size: var(--text-xs);
+  pointer-events: none;
+}
+
+.title {
+  margin-bottom: var(--space-2xs);
+  font-size: var(--text-sm);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.solve {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 var(--space-xs);
+  padding-block: var(--space-2xs);
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+
+.who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.what {
+  grid-column: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-muted);
+}
+
+.when {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--color-muted);
+}
+
+.neighbors {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-xs) 0;
+}
+
+.subtitle {
+  padding: var(--space-2xs) var(--space-md);
+  font-size: var(--text-sm);
+}
+
+.neighbor {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-2xs) var(--space-md);
+}
+
+.doing {
+  flex: none;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.neighbor .who {
+  flex: 1;
+}
+
+.empty {
+  padding: var(--space-md);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}

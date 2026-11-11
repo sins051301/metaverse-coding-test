@@ -1,0 +1,63 @@
+.strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.iconButton {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: background-color var(--dur-micro) var(--ease-out);
+}
+
+.iconButton:hover {
+  background: var(--color-rule);
+}
+
+.iconButton svg {
+  width: 14px;
+  height: 14px;
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+}
+
+.number {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.star {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-paper-3);
+  color: var(--map-star);
+}
+
+.star svg {
+  width: 18px;
+  height: 18px;
+}

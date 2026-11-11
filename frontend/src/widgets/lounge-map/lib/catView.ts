@@ -11,10 +11,23 @@ import {
   SHEET_WIDTH,
 } from '@/entities/avatar/lib/catSprite'
 import { COAT_PALETTES, type Coat } from '@/entities/avatar/model/appearance'
+import type { Activity } from '@/entities/lounge/api/loungeMessages'
+import {
+  BUBBLE_HEIGHT,
+  BUBBLE_WIDTH,
+  drawBubble,
+  drawSolved,
+  drawStar,
+  drawZ,
+  SOLVED_HEIGHT,
+  SOLVED_WIDTH,
+  STAR_HEIGHT,
+  STAR_WIDTH,
+  Z_SIZE,
+} from '@/widgets/lounge-map/lib/drawEffects'
 import { tokenColor } from '@/widgets/lounge-map/lib/tokenColor'
 import type { Desk } from '@/widgets/lounge-map/model/loungeMap'
 
-// 걷기는 초당 4칸 (docs/tuning.md)
 const WALK_FRAME_RATE = 4
 const NAME_TAG_GAP = 1
 const DIRECTIONS = ['down', 'up', 'left', 'right'] as const
@@ -27,10 +40,6 @@ export function walkAnimationKey(coat: Coat, direction: string) {
   return `${catTextureKey(coat)}-${direction}`
 }
 
-/**
- * 털색 시트를 처음 필요할 때 한 번만 만든다. 같은 도트 템플릿에 팔레트만 바꿔 그린다.
- * 다른 사람이 처음 보는 털색으로 들어와도 그때 만들면 된다.
- */
 export function ensureCatTexture(scene: Phaser.Scene, coat: Coat) {
   const key = catTextureKey(coat)
   if (scene.textures.exists(key)) {
@@ -69,14 +78,57 @@ export type CatView = {
   container: Phaser.GameObjects.Container
   sprite: Phaser.GameObjects.Sprite
   nameTag: Phaser.GameObjects.Text
+  bubble: Phaser.GameObjects.Image
+  z: Phaser.GameObjects.Image
+  star: Phaser.GameObjects.Image
+  solved: Phaser.GameObjects.Image
 }
 
-/**
- * 고양이 = 레이어를 담는 Container. 지금은 몸통 한 장 + 이름표지만, 꾸미기 아이템이 생기면 같은 칸 격자로 그린 스프라이트를 더한다.
- * Container 의 위치 = 발 위치. 그래서 y-정렬과 책상 앞 자리 계산이 모두 "발" 기준이다.
- *
- * @param mine 내 이름표는 복숭아색, 남은 크림색 (docs/ui-design.md 3장)
- */
+const EFFECT = {
+  bubble: (dotIndex: number) => `fx-bubble-${dotIndex}`,
+  failure: 'fx-failure',
+  z: 'fx-z',
+  star: 'fx-star',
+  solved: 'fx-solved',
+}
+
+function ensureEffectTextures(scene: Phaser.Scene) {
+  if (scene.textures.exists(EFFECT.z)) {
+    return
+  }
+  function canvas(
+    key: string,
+    width: number,
+    height: number,
+    draw: (context: CanvasRenderingContext2D) => void,
+  ) {
+    const texture = scene.textures.createCanvas(key, width, height)!
+    draw(texture.getContext())
+    texture.refresh()
+  }
+  for (const dotIndex of [0, 1, 2]) {
+    canvas(EFFECT.bubble(dotIndex), BUBBLE_WIDTH, BUBBLE_HEIGHT, (context) =>
+      drawBubble(context, tokenColor, dotIndex, false),
+    )
+  }
+  canvas(EFFECT.failure, BUBBLE_WIDTH, BUBBLE_HEIGHT, (context) =>
+    drawBubble(context, tokenColor, null, true),
+  )
+  canvas(EFFECT.z, Z_SIZE, Z_SIZE, (context) => drawZ(context, tokenColor))
+  canvas(EFFECT.star, STAR_WIDTH, STAR_HEIGHT, (context) =>
+    drawStar(context, tokenColor),
+  )
+  canvas(EFFECT.solved, SOLVED_WIDTH, SOLVED_HEIGHT, (context) =>
+    drawSolved(context, tokenColor),
+  )
+}
+
+const HEAD_TOP = -(FRAME_SIZE - 4)
+const NAME_TAG_Y = -FRAME_SIZE + 2 - NAME_TAG_GAP
+const BUBBLE_POSITION = { x: -16, y: HEAD_TOP }
+const Z_POSITION = { x: 5, y: HEAD_TOP + 1 }
+const STAR_BOTTOM = NAME_TAG_Y - 10
+
 export function createCatView(
   scene: Phaser.Scene,
   coat: Coat,
@@ -85,11 +137,12 @@ export function createCatView(
   x: number,
   y: number,
 ): CatView {
+  ensureEffectTextures(scene)
   const sprite = scene.add
     .sprite(0, 0, ensureCatTexture(scene, coat), frameName('down', 0))
     .setOrigin(0.5, 1)
   const nameTag = scene.add
-    .text(0, -FRAME_SIZE + 2 - NAME_TAG_GAP, name, {
+    .text(0, NAME_TAG_Y, name, {
       fontFamily: 'Jua, sans-serif',
       fontSize: '7px',
       color: tokenColor(mine ? '--color-accent-ink' : '--color-tag-ink'),
@@ -97,11 +150,62 @@ export function createCatView(
       padding: { x: 2, y: 0 },
     })
     .setOrigin(0.5, 1)
-  const container = scene.add.container(x, y, [sprite, nameTag]).setDepth(y)
-  return { container, sprite, nameTag }
+  const bubble = scene.add
+    .image(BUBBLE_POSITION.x, BUBBLE_POSITION.y, EFFECT.bubble(0))
+    .setOrigin(0, 0)
+    .setVisible(false)
+  const z = scene.add
+    .image(Z_POSITION.x, Z_POSITION.y, EFFECT.z)
+    .setOrigin(0, 0)
+    .setVisible(false)
+  const star = scene.add
+    .image(0, STAR_BOTTOM, EFFECT.star)
+    .setOrigin(0.5, 1)
+    .setVisible(false)
+  const solved = scene.add
+    .image(0, NAME_TAG_Y + 2, EFFECT.solved)
+    .setOrigin(0.5, 1)
+    .setVisible(false)
+  const container = scene.add
+    .container(x, y, [sprite, nameTag, bubble, z, star, solved])
+    .setDepth(y)
+  return { container, sprite, nameTag, bubble, z, star, solved }
 }
 
-// 앉은 고양이의 발 위치. 템플릿 꼭대기가 책상 윗면보다 9 위에 오게 하면(목업 배치) 앞발 줄이 책상 윗면에 얹힌다
+const EFFECT_STEP_MS = 450
+export const SOLVED_SHOW_MS = 10_000
+export const FAILURE_SHOW_MS = 3_000
+
+export type CatLook = {
+  seated: boolean
+  activity: Activity
+  mine: boolean
+  solved: boolean
+  failed: boolean
+}
+
+export function applyCatLook(view: CatView, look: CatLook, time: number) {
+  const step = Math.floor(time / EFFECT_STEP_MS)
+  const typing = look.seated && look.activity === 'typing'
+  const napping = look.seated && look.activity === 'napping'
+  if (look.seated) {
+    view.sprite.anims.stop()
+    view.sprite.setFrame(
+      napping
+        ? frameName('nap', 0)
+        : frameName('sit', typing ? 1 + (step % 2) : 0),
+    )
+  }
+  const showFailure = look.mine && look.failed
+  view.bubble
+    .setVisible(typing || showFailure)
+    .setTexture(showFailure ? EFFECT.failure : EFFECT.bubble(step % 3))
+  view.z.setVisible(napping).setY(Z_POSITION.y - (step % 2))
+  view.solved.setVisible(look.mine && look.solved)
+  view.nameTag.setVisible(!(look.mine && look.solved))
+  view.star.setVisible(!look.mine && look.solved).setY(STAR_BOTTOM - (step % 2))
+}
+
 export function seatPosition(desk: Desk) {
   return {
     x: desk.x + 4 + BODY_CENTER_OFFSET,
