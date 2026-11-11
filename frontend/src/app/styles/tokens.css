@@ -52,3 +52,34 @@
   --font-code: 'JetBrains Mono', 'Gowun Dodum', monospace;
   --tracking-display: -0.025em;
 }
+
+/* 라운지 지도와 고양이 색 (목업과 같은 값). Phaser 가 이 토큰을 읽어 캔버스에 그린다 (widgets/lounge-map/lib/tokenColor.ts) */
+:root {
+  --map-floor-a: oklch(62% 0.07 65);
+  --map-floor-b: oklch(59% 0.07 62);
+  --map-wall: oklch(32% 0.03 50);
+  --map-wall-edge: oklch(42% 0.035 55);
+  --map-sky: oklch(82% 0.07 220);
+  --map-sky-light: oklch(90% 0.05 220);
+  --map-frame: oklch(97% 0.012 85);
+  --map-rug: oklch(72% 0.09 35);
+  --map-rug-edge: oklch(66% 0.1 35);
+  --map-desk-top: oklch(80% 0.05 80);
+  --map-desk-front: oklch(68% 0.06 70);
+  --map-laptop: oklch(32% 0.03 160);
+  --map-screen: oklch(88% 0.12 160);
+
+  --cat-ear: oklch(80% 0.08 20);
+  --cat-nose: oklch(72% 0.12 15);
+  --cat-eye: oklch(25% 0.02 160);
+  --cat-eye-gold: oklch(85% 0.15 100);
+  --cat-ginger: oklch(74% 0.13 58);
+  --cat-ginger-dark: oklch(63% 0.14 48);
+  --cat-grey: oklch(70% 0.02 250);
+  --cat-grey-dark: oklch(56% 0.025 250);
+  --cat-black: oklch(30% 0.015 250);
+  --cat-black-muzzle: oklch(38% 0.015 250);
+  --cat-white: oklch(96% 0.01 90);
+  --cat-cream: oklch(90% 0.04 85);
+  --cat-brown: oklch(45% 0.05 50);
+}
