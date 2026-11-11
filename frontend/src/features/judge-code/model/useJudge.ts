@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   isFinished,
   requestJudge,
@@ -9,6 +9,7 @@ import {
   type SourceCode,
 } from '@/entities/judge/api/judgeApi'
 import type { RunResult, SubmissionResult } from '@/entities/judge/model/types'
+import { loungeStore } from '@/entities/lounge/model/loungeStore'
 import { CURRENT_USER_QUERY_KEY } from '@/entities/user/api/userQueries'
 import { isHttpError } from '@/shared/api/httpClient'
 
@@ -43,6 +44,16 @@ export function useJudge(problemId: number) {
     ...submissionResultQuery(jobId ?? 0),
     enabled: mode === 'submit' && jobId !== null,
   })
+
+  const submittedVerdict =
+    mode === 'submit' && submission.data?.status === 'DONE'
+      ? submission.data.verdict
+      : null
+  useEffect(() => {
+    if (submittedVerdict !== null && submittedVerdict !== 'AC') {
+      loungeStore.flashFailure()
+    }
+  }, [jobId, submittedVerdict])
 
   function judge(nextMode: JudgeMode, source: SourceCode) {
     setMode(nextMode)

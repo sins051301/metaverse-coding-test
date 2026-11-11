@@ -6,6 +6,7 @@ import { Link } from 'react-router'
 import type { JudgeMode } from '@/entities/judge/api/judgeApi'
 import { problemDetailQuery } from '@/entities/problem/api/problemQueries'
 import { startLogin } from '@/features/auth/model/login'
+import { activityTracker } from '@/entities/lounge/model/activityTracker'
 import { loadDraft, saveDraft } from '@/features/edit-code/model/codeDraft'
 import { ResetCodeButton } from '@/features/edit-code/ui/ResetCodeButton'
 import { useJudge } from '@/features/judge-code/model/useJudge'
@@ -20,7 +21,6 @@ import { ProblemStatement } from '@/widgets/problem-statement/ui/ProblemStatemen
 import { SubmissionHistoryPanel } from '@/widgets/submission-history/ui/SubmissionHistoryPanel'
 import styles from './ProblemWorkspace.module.css'
 
-// Monaco는 수 MB라 첫 화면 번들에서 떼어 내고, 에디터 자리가 그려질 때 받는다
 const CodeEditor = lazy(() =>
   import('@/features/edit-code/ui/CodeEditor').then((module) => ({
     default: module.CodeEditor,
@@ -39,7 +39,6 @@ export function ProblemWorkspace({
   onLanguageChange,
 }: ProblemWorkspaceProps) {
   const { data: problem, isError } = useQuery(problemDetailQuery(problemId))
-  // 코드는 React 상태에 두지 않는다. 글자를 칠 때마다 화면 전체가 다시 그려지지 않도록, 실행·제출하는 순간에만 에디터에서 읽는다
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const { view, isJudging, judge } = useJudge(problemId)
   const [showHistory, setShowHistory] = useState(false)
@@ -66,7 +65,6 @@ export function ProblemWorkspace({
     const codeEditor = editorRef.current
     const model = codeEditor?.getModel()
     if (!codeEditor || !model) return
-    // setValue는 실행 취소 기록을 지우므로, 편집으로 바꿔 Ctrl+Z로 되돌릴 수 있게 한다
     codeEditor.executeEdits('reset', [
       { range: model.getFullModelRange(), text: starterCode },
     ])
@@ -137,7 +135,10 @@ export function ProblemWorkspace({
                       defaultValue={
                         loadDraft(problemId, language) ?? starterCode
                       }
-                      onChange={(code) => saveDraft(problemId, language, code)}
+                      onChange={(code) => {
+                        saveDraft(problemId, language, code)
+                        activityTracker.touch()
+                      }}
                       onMount={(codeEditor) => {
                         editorRef.current = codeEditor
                       }}
