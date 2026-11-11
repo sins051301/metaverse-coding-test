@@ -1,4 +1,3 @@
-/* docs/ui-design.md 3장 테마 토큰. 값은 목업(https://claude.ai/artifact/Htr11PW2b1iUMcFVjFbwXS)과 같다 */
 :root {
   --color-paper: oklch(24% 0.012 60);
   --color-paper-2: oklch(29% 0.014 60);
@@ -53,7 +52,6 @@
   --tracking-display: -0.025em;
 }
 
-/* 라운지 지도와 고양이 색 (목업과 같은 값). Phaser 가 이 토큰을 읽어 캔버스에 그린다 (widgets/lounge-map/lib/tokenColor.ts) */
 :root {
   --map-floor-a: oklch(62% 0.07 65);
   --map-floor-b: oklch(59% 0.07 62);
@@ -68,6 +66,8 @@
   --map-desk-front: oklch(68% 0.06 70);
   --map-laptop: oklch(32% 0.03 160);
   --map-screen: oklch(88% 0.12 160);
+  --map-pot: oklch(74% 0.15 46);
+  --map-star: oklch(88% 0.14 85);
 
   --cat-ear: oklch(80% 0.08 20);
   --cat-nose: oklch(72% 0.12 15);

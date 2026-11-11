@@ -1,22 +1,23 @@
 import { useSyncExternalStore } from 'react'
-import type { AvatarState } from '@/entities/lounge/api/loungeMessages'
+import type {
+  AvatarState,
+  RecentSolve,
+} from '@/entities/lounge/api/loungeMessages'
 
-/**
- * 서버가 알려 준 "지금 라운지에 있는 모두"(나 포함). loungeConnection 이 쓰고, Phaser 장면과 React(접속자 수)가 읽는다.
- *
- * 다른 사람 좌표도 여기 들어 있어 초당 여러 번 바뀐다. 그래서 React 는 좌표가 아니라 접속자 수만 구독하고(useOnlineCount),
- * 좌표는 Phaser 가 매 프레임 직접 읽는다 (README 10장 "2단계").
- */
 type RosterState = {
   connected: boolean
   myAvatarId: string | null
   avatars: ReadonlyMap<string, AvatarState>
+  recentSolves: readonly RecentSolve[]
+  solvedAt: ReadonlyMap<string, number>
 }
 
 let state: RosterState = {
   connected: false,
   myAvatarId: null,
   avatars: new Map(),
+  recentSolves: [],
+  solvedAt: new Map(),
 }
 const listeners = new Set<() => void>()
 
@@ -36,10 +37,23 @@ export const rosterStore = {
   reset(connected: boolean) {
     update({ connected, myAvatarId: null, avatars: new Map() })
   },
-  replaceAll(myAvatarId: string, avatars: AvatarState[]) {
+  replaceAll(
+    myAvatarId: string,
+    avatars: AvatarState[],
+    recentSolves: RecentSolve[],
+  ) {
     update({
       myAvatarId,
       avatars: new Map(avatars.map((avatar) => [avatar.id, avatar])),
+      recentSolves,
+    })
+  },
+  recordSolve(avatarIds: string[], solve: RecentSolve, now: number) {
+    const solvedAt = new Map(state.solvedAt)
+    avatarIds.forEach((avatarId) => solvedAt.set(avatarId, now))
+    update({
+      solvedAt,
+      recentSolves: [solve, ...state.recentSolves].slice(0, 5),
     })
   },
   put(avatar: AvatarState) {
@@ -54,7 +68,6 @@ export const rosterStore = {
   },
 }
 
-// 남이 앉아 있는 책상 번호들. 내 책상은 뺀다
 export function occupiedDeskIds(): Set<number> {
   const { avatars, myAvatarId } = state
   const desks = new Set<number>()
@@ -66,7 +79,43 @@ export function occupiedDeskIds(): Set<number> {
   return desks
 }
 
-// 서버에 연결되지 않았으면 null (상단 바에서 숫자를 숨긴다)
+export function useRecentSolves(): readonly RecentSolve[] {
+  return useSyncExternalStore(rosterStore.subscribe, () => state.recentSolves)
+}
+
+export type SeatedNeighbor = Pick<
+  AvatarState,
+  'id' | 'nickname' | 'deskId' | 'activity'
+> & { solvedAt: number | null }
+
+let neighborsCache: { key: string; value: SeatedNeighbor[] } = {
+  key: '',
+  value: [],
+}
+
+function seatedNeighbors(): SeatedNeighbor[] {
+  const value = [...state.avatars.values()]
+    .filter(
+      (avatar) => avatar.id !== state.myAvatarId && avatar.deskId !== null,
+    )
+    .map((avatar) => ({
+      id: avatar.id,
+      nickname: avatar.nickname,
+      deskId: avatar.deskId,
+      activity: avatar.activity,
+      solvedAt: state.solvedAt.get(avatar.id) ?? null,
+    }))
+  const key = JSON.stringify(value)
+  if (key !== neighborsCache.key) {
+    neighborsCache = { key, value }
+  }
+  return neighborsCache.value
+}
+
+export function useSeatedNeighbors(): SeatedNeighbor[] {
+  return useSyncExternalStore(rosterStore.subscribe, seatedNeighbors)
+}
+
 export function useOnlineCount(): number | null {
   return useSyncExternalStore(rosterStore.subscribe, () =>
     state.connected && state.myAvatarId !== null ? state.avatars.size : null,

@@ -1,8 +1,8 @@
 import type { Coat } from '@/entities/avatar/model/appearance'
 
-// 백엔드 com.codingtest.lounge.LoungeMessages 와 같은 모양이어야 한다
-
 export type Direction = 'down' | 'up' | 'left' | 'right'
+
+export type Activity = 'idle' | 'typing' | 'napping'
 
 export type AvatarState = {
   id: string
@@ -13,8 +13,14 @@ export type AvatarState = {
   y: number
   direction: Direction
   moving: boolean
-  // 앉아 있으면 책상 번호, 서 있으면 null
   deskId: number | null
+  activity: Activity
+}
+
+export type RecentSolve = {
+  nickname: string
+  problemTitle: string
+  solvedAt: string
 }
 
 export type JoinRequest = {
@@ -33,13 +39,18 @@ export type MoveRequest = {
   moving: boolean
 }
 
-// /topic/lounge: 모두에게 방송
-export type LoungeEvent = {
-  type: 'joined' | 'moved' | 'sat' | 'stood' | 'left'
-  avatar: AvatarState
-}
+export type LoungeEvent =
+  | {
+      type: 'joined' | 'moved' | 'sat' | 'stood' | 'left' | 'activity'
+      avatar: AvatarState
+    }
+  | { type: 'solved'; avatarIds: string[]; solve: RecentSolve }
 
-// /user/queue/lounge: 나에게만
 export type PersonalMessage =
-  | { type: 'snapshot'; myAvatarId: string; avatars: AvatarState[] }
+  | {
+      type: 'snapshot'
+      myAvatarId: string
+      avatars: AvatarState[]
+      recentSolves: RecentSolve[]
+    }
   | { type: 'sit-rejected'; deskId: number }
