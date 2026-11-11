@@ -6,9 +6,16 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react(), vanillaExtractPlugin()],
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-    },
+    alias: [
+      {
+        find: 'monaco-editor/esm/vs/editor/editor.api.js',
+        replacement: 'monaco-editor',
+      },
+      {
+        find: '@',
+        replacement: fileURLToPath(new URL('./src', import.meta.url)),
+      },
+    ],
   },
   server: {
     port: 3000,
