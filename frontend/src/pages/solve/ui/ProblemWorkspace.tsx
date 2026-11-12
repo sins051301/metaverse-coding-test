@@ -137,7 +137,9 @@ export function ProblemWorkspace({
             <strong className={styles.pairName}>
               {sharing.partner.nickname}
             </strong>
-            님과 함께 풀고 있어요. 제출은 내가 할 수 있어요.
+            {sharing.partner.away
+              ? '님 연결이 잠깐 끊겼어요. 15초 안에 돌아오면 이어서 함께 풀어요.'
+              : '님과 함께 풀고 있어요. 제출은 내가 할 수 있어요.'}
           </span>
           <span className={styles.spacer} />
           <Button size="small" variant="quiet" onClick={sharing.endPair}>

@@ -20,11 +20,19 @@ const CodeEditor = lazy(() =>
 )
 
 export function SpectatePage() {
-  const roomId = useParams().roomId ?? ''
+  const routeRoomId = useParams().roomId ?? ''
   const navigate = useNavigate()
   const { seatedDeskId } = useLoungeState()
-  const { state, pair, chats, onEditorMount, requestPair, endPair, sendChat } =
-    useSpectate(roomId)
+  const {
+    roomId,
+    state,
+    pair,
+    chats,
+    onEditorMount,
+    requestPair,
+    endPair,
+    sendChat,
+  } = useSpectate(routeRoomId)
   const { data: user } = useQuery(currentUserQuery())
   const myAvatarId = useMyAvatarId()
   const paired = pair === 'paired'
@@ -35,6 +43,12 @@ export function SpectatePage() {
   })
 
   const leave = () => navigate(seatedDeskId === null ? '/' : '/problems')
+
+  useEffect(() => {
+    if (roomId !== routeRoomId) {
+      navigate(`../${roomId}`, { relative: 'path', replace: true })
+    }
+  }, [roomId, routeRoomId, navigate])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -69,6 +83,7 @@ export function SpectatePage() {
   }
 
   const { fileName, monacoLanguage } = LANGUAGES[state.language]
+  const writable = paired && !state.ownerAway
   return (
     <section className={styles.page}>
       <div className={styles.banner}>
@@ -79,13 +94,18 @@ export function SpectatePage() {
             : '님의 코드를 구경하고 있어요. 드래그해서 복사할 수 있어요.'}
         </span>
         <span className={styles.spacer} />
+        {state.ownerAway ? (
+          <span className={styles.notice}>
+            주인 연결이 잠깐 끊겼어요. 15초 안에 돌아오면 이어서 볼 수 있어요.
+          </span>
+        ) : null}
         {pair === 'requested' ? (
           <span className={styles.notice}>페어를 요청했어요. 기다리는 중…</span>
         ) : null}
         {pair === 'declined' ? (
           <span className={styles.notice}>이번에는 거절했어요.</span>
         ) : null}
-        {pair === 'none' || pair === 'declined' ? (
+        {state.pairable && (pair === 'none' || pair === 'declined') ? (
           <Button
             size="small"
             variant="primary"
@@ -119,7 +139,7 @@ export function SpectatePage() {
                 path={`spectate/${roomId}/${state.documentVersion}/${fileName}`}
                 language={monacoLanguage}
                 defaultValue=""
-                readOnly={!paired}
+                readOnly={!writable}
                 onMount={onEditorMount}
               />
             </Suspense>
