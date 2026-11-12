@@ -1,14 +1,25 @@
 import type { editor } from 'monaco-editor'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MonacoBinding } from 'y-monaco'
-import { applyAwarenessUpdate, Awareness } from 'y-protocols/awareness'
+import {
+  applyAwarenessUpdate,
+  Awareness,
+  encodeAwarenessUpdate,
+} from 'y-protocols/awareness'
 import * as Y from 'yjs'
-import type { DeskMessage } from '@/entities/desk/api/deskMessages'
+import type {
+  DeskMessage,
+  PairChatMessage,
+} from '@/entities/desk/api/deskMessages'
+import { watchCursorLabels } from '@/entities/desk/lib/cursorLabels'
 import { loungeConnection } from '@/entities/lounge/api/loungeConnection'
+import { rosterStore } from '@/entities/lounge/model/rosterStore'
 import type { Language } from '@/shared/config/languages'
-import { base64ToBytes } from '@/shared/lib/base64'
+import { base64ToBytes, bytesToBase64 } from '@/shared/lib/base64'
 
 const REMOTE_ORIGIN = 'remote'
+
+export type PairPhase = 'none' | 'requested' | 'declined' | 'paired'
 
 export type SpectateState =
   | { phase: 'connecting' }
@@ -24,11 +35,23 @@ export type SpectateState =
 
 type Session = { doc: Y.Doc; awareness: Awareness }
 
+function myNickname() {
+  const { avatars, myAvatarId } = rosterStore.getState()
+  return (myAvatarId && avatars.get(myAvatarId)?.nickname) || '나'
+}
+
 export function useSpectate(roomId: string) {
   const [state, setState] = useState<SpectateState>({ phase: 'connecting' })
   const [codeEditor, setCodeEditor] =
     useState<editor.IStandaloneCodeEditor | null>(null)
   const [session, setSession] = useState<Session | null>(null)
+  const [pair, setPair] = useState<PairPhase>('none')
+  const [chats, setChats] = useState<PairChatMessage[]>([])
+  const pairedRef = useRef(false)
+
+  useEffect(() => {
+    pairedRef.current = pair === 'paired'
+  }, [pair])
 
   useEffect(() => {
     let current: Session | null = null
@@ -59,11 +82,32 @@ export function useSpectate(roomId: string) {
         apply(message.kind, message.payload)
       } else if (message.type === 'closed') {
         setState({ phase: 'closed' })
+        setPair('none')
       } else if (message.type === 'not-found') {
         setState({ phase: 'not-found' })
+      } else if (message.type === 'pair-started') {
+        setPair('paired')
+      } else if (message.type === 'pair-declined') {
+        setPair('declined')
+      } else if (message.type === 'pair-ended') {
+        setPair('none')
+        setChats([])
+      } else if (message.type === 'chat') {
+        setChats((previous) => [
+          ...previous,
+          {
+            memberId: message.memberId,
+            nickname: message.nickname,
+            text: message.text,
+            sentAt: message.sentAt,
+          },
+        ])
       }
     })
-    const join = () => loungeConnection.send(`/app/desk/${roomId}/join`)
+    const join = () => {
+      setPair('none')
+      loungeConnection.send(`/app/desk/${roomId}/join`)
+    }
     const unsubscribeJoined = loungeConnection.onJoined(join)
     if (loungeConnection.isReady()) join()
 
@@ -78,14 +122,49 @@ export function useSpectate(roomId: string) {
   useEffect(() => {
     const model = codeEditor?.getModel()
     if (!codeEditor || !model || !session) return
+    const { doc, awareness } = session
+    awareness.setLocalStateField('user', { name: myNickname() })
     const binding = new MonacoBinding(
-      session.doc.getText('code'),
+      doc.getText('code'),
       model,
       new Set([codeEditor]),
-      session.awareness,
+      awareness,
     )
-    return () => binding.destroy()
-  }, [codeEditor, session])
+    const stopLabels = watchCursorLabels(awareness)
+    const send = (kind: 'doc' | 'awareness', bytes: Uint8Array) => {
+      if (pairedRef.current) {
+        loungeConnection.send(`/app/desk/${roomId}/update`, {
+          kind,
+          payload: bytesToBase64(bytes),
+        })
+      }
+    }
+    const onDocUpdate = (update: Uint8Array, origin: unknown) => {
+      if (origin !== REMOTE_ORIGIN) send('doc', update)
+    }
+    const onAwarenessUpdate = (
+      {
+        added,
+        updated,
+        removed,
+      }: { added: number[]; updated: number[]; removed: number[] },
+      origin: unknown,
+    ) => {
+      if (origin === REMOTE_ORIGIN) return
+      send(
+        'awareness',
+        encodeAwarenessUpdate(awareness, [...added, ...updated, ...removed]),
+      )
+    }
+    doc.on('update', onDocUpdate)
+    awareness.on('update', onAwarenessUpdate)
+    return () => {
+      doc.off('update', onDocUpdate)
+      awareness.off('update', onAwarenessUpdate)
+      stopLabels()
+      binding.destroy()
+    }
+  }, [codeEditor, session, roomId])
 
   useEffect(() => {
     if (!session) return
@@ -95,5 +174,29 @@ export function useSpectate(roomId: string) {
     }
   }, [session])
 
-  return { state, onEditorMount: setCodeEditor }
+  const requestPair = useCallback(() => {
+    setPair('requested')
+    loungeConnection.send(`/app/desk/${roomId}/pair-request`)
+  }, [roomId])
+
+  const endPair = useCallback(() => {
+    loungeConnection.send(`/app/desk/${roomId}/pair-end`)
+  }, [roomId])
+
+  const sendChat = useCallback(
+    (text: string) => {
+      loungeConnection.send(`/app/desk/${roomId}/chat`, { text })
+    },
+    [roomId],
+  )
+
+  return {
+    state,
+    pair,
+    chats,
+    onEditorMount: setCodeEditor,
+    requestPair,
+    endPair,
+    sendChat,
+  }
 }

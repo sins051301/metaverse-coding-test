@@ -17,6 +17,12 @@ const READ_ONLY_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
   domReadOnly: true,
 }
 
+const WRITABLE_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
+  ...BASE_EDITOR_OPTIONS,
+  readOnly: false,
+  domReadOnly: false,
+}
+
 export function CodeEditor({
   path,
   language,
@@ -31,7 +37,7 @@ export function CodeEditor({
       language={language}
       defaultValue={defaultValue}
       theme={MONACO_THEME}
-      options={readOnly ? READ_ONLY_OPTIONS : BASE_EDITOR_OPTIONS}
+      options={readOnly ? READ_ONLY_OPTIONS : WRITABLE_OPTIONS}
       onChange={(value) => onChange?.(value ?? '')}
       onMount={onMount}
     />
