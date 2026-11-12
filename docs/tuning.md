@@ -23,6 +23,10 @@
 | 별·SOLVED! 표시 | `catView.SOLVED_SHOW_MS` | 10초 | 축하가 눈에 띄되 오래 가리지 않게 | — | 서비스 공개 후 |
 | 오답 ... 표시 | `catView.FAILURE_SHOW_MS` | 3초 | 임시 실패 이펙트 | 실패 이펙트를 정식으로 정할 때 | 이펙트 정리 때 |
 | WebSocket 메시지 크기 | `LoungeWebSocketConfiguration.MESSAGE_SIZE_LIMIT_BYTES` | 512KB | 관전 시작 때 코드 전체(최대 64K자)를 base64 로 보내도 넉넉하게 | 실제 문서 크기 분포. 너무 크면 악의적인 큰 메시지로 메모리를 쓰게 할 수 있음 | 배포 전 |
+| 전체 채팅 길이·간격 | `LoungeRegistry.CHAT_MAX_LENGTH`, `CHAT_INTERVAL` | 200자, 1초에 1개 | 게스트도 쓰므로 도배를 막을 최소한 | 실제로 도배가 생기는지, 정상 대화가 막히는지 | 서비스 공개 후 |
+| 채팅 기록 | `LoungeRegistry.RECENT_CHAT_LIMIT` | 최근 30개, 서버 메모리 | 새로 들어온 사람이 분위기를 알 만큼 | 기록을 DB에 남길지(신고·운영) | 서비스 공개 전 |
+| 머리 위 말풍선 | `catView.SPEECH_SHOW_MS` | 4초 | 한 줄을 읽을 시간 | 긴 메시지가 다 안 읽히는지 | 서비스 공개 후 |
+| 페어 채팅 길이 | `DeskMessages.PAIR_CHAT_MAX_LENGTH` | 500자 | 코드 몇 줄을 붙여 넣을 만큼 | — | 서비스 공개 후 |
 | 하트비트 | `LoungeWebSocketConfiguration.HEARTBEAT_MILLIS` | 10초 | stompjs 기본값과 같게 | 유령 고양이가 사라지는 데 걸리는 시간, 모바일 배터리 | 배포 후 |
 | 재연결 대기 | `loungeConnection.RECONNECT_DELAY_MS` | 3초 | 서버 재시작 중 계속 두드리지 않을 만큼 | 배포 후 끊김이 잦은지 | 배포 시 |
 | 바로 옮기는 거리 | `RemoteCats.SNAP_DISTANCE` | 40도트 | 100ms에 걷는 거리(4.5도트)의 약 9배. 이보다 멀면 재연결 등으로 밀린 것으로 봄 | 남의 고양이가 순간이동하는 게 거슬리는지 | 2단계 확인 후 |
