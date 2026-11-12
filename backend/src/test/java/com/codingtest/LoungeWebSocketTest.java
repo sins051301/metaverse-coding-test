@@ -299,6 +299,27 @@ class LoungeWebSocketTest {
 	}
 
 	@Test
+	@DisplayName("주인 본인이 다른 탭으로 자기 방을 관전하면 페어를 요청할 수 없다 (pairable=false, 요청도 버림). 게스트는 로그인하면 되므로 true")
+	void ownerCannotPairWithThemselves() throws Exception {
+		User ownerUser = newUser("self-pair");
+		LoungeClient owner = connect(cookieOf(ownerUser));
+		owner.join(100, 120, 7);
+		String roomId = owner.host();
+
+		LoungeClient ownerOtherTab = connect(cookieOf(ownerUser));
+		ownerOtherTab.join(160, 130, null);
+		ownerOtherTab.send("/app/desk/" + roomId + "/join", Map.of());
+		assertThat(ownerOtherTab.awaitDesk("opened").path("pairable").asBoolean()).isFalse();
+		ownerOtherTab.send("/app/desk/" + roomId + "/pair-request", Map.of());
+		owner.assertNoDesk("pair-requested");
+
+		LoungeClient guest = connect(null);
+		guest.join(200, 150, null);
+		guest.send("/app/desk/" + roomId + "/join", Map.of());
+		assertThat(guest.awaitDesk("opened").path("pairable").asBoolean()).isTrue();
+	}
+
+	@Test
 	@DisplayName("회원 주인이 끊겼다가 유예 안에 다시 연결되면 같은 방 id 로 이어 열고, 관전자는 새 문서를 받는다. 그동안 페어 상대는 글을 못 쓴다")
 	void memberOwnerResumesWithinGrace() throws Exception {
 		User ownerUser = newUser("resume-owner");
