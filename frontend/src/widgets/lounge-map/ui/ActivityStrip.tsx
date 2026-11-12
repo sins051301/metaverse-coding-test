@@ -1,3 +1,4 @@
+import { usePairRequestNicknames } from '@/entities/desk/model/pairRequestStore'
 import {
   useOnlineCount,
   useRecentSolves,
@@ -19,6 +20,7 @@ export function ActivityStrip({ onExpand }: ActivityStripProps) {
   ).length
   const latest = useRecentSolves()[0]
   const now = useNow()
+  const pairRequestLabel = describePairRequests(usePairRequestNicknames())
   const recentlySolved =
     latest !== undefined && now - Date.parse(latest.solvedAt) < RECENT_STAR_MS
 
@@ -63,6 +65,34 @@ export function ActivityStrip({ onExpand }: ActivityStripProps) {
           </svg>
         </div>
       ) : null}
+      {pairRequestLabel !== null ? (
+        <div
+          className={styles.pairRequest}
+          role="status"
+          title={pairRequestLabel}
+          aria-label={pairRequestLabel}
+        >
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M2.5 5.5h10m-3-3 3 3-3 3M13.5 10.5h-10m3-3-3 3 3 3" />
+          </svg>
+        </div>
+      ) : null}
     </div>
   )
+}
+
+function describePairRequests(nicknames: readonly string[]) {
+  if (nicknames.length === 0) return null
+  const others = nicknames.length - 1
+  return others > 0
+    ? `${nicknames[0]}님 외 ${others}명이 페어를 요청했어요`
+    : `${nicknames[0]}님이 페어를 요청했어요`
 }

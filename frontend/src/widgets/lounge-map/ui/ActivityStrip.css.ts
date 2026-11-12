@@ -1,4 +1,4 @@
-import { globalStyle, style } from '@vanilla-extract/css'
+import { globalStyle, keyframes, style } from '@vanilla-extract/css'
 import { vars } from '@/shared/styles/theme.css'
 
 export const strip = style({
@@ -54,6 +54,28 @@ export const star = style({
   borderRadius: vars.radius.pill,
   background: vars.color.paper3,
   color: vars.map.star,
+})
+
+const blink = keyframes({
+  '50%': {
+    opacity: '0.35',
+  },
+})
+
+export const pairRequest = style({
+  width: '36px',
+  height: '36px',
+  display: 'grid',
+  placeItems: 'center',
+  borderRadius: vars.radius.pill,
+  background: vars.color.paper3,
+  color: vars.color.ink,
+  animation: `${blink} 1.2s ${vars.ease.out} infinite`,
+})
+
+globalStyle(`${pairRequest} svg`, {
+  width: '18px',
+  height: '18px',
 })
 
 globalStyle(`${iconButton} svg`, {
