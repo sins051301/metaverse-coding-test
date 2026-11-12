@@ -27,6 +27,7 @@
 | 채팅 기록 | `LoungeRegistry.RECENT_CHAT_LIMIT` | 최근 30개, 서버 메모리 | 새로 들어온 사람이 분위기를 알 만큼 | 기록을 DB에 남길지(신고·운영) | 서비스 공개 전 |
 | 머리 위 말풍선 | `catView.SPEECH_SHOW_MS` | 4초 | 한 줄을 읽을 시간 | 긴 메시지가 다 안 읽히는지 | 서비스 공개 후 |
 | 페어 채팅 길이 | `DeskMessages.PAIR_CHAT_MAX_LENGTH` | 500자 | 코드 몇 줄을 붙여 넣을 만큼 | — | 서비스 공개 후 |
+| 책상 재연결 유예 | `lounge.desk.reconnect-grace` (application.properties) | 15초 | 와이파이가 잠깐 끊기거나 새로고침하는 정도. 하트비트(10초)로 끊김을 알아챈 뒤에도 조금 더 기다림 | 실제 재연결에 걸리는 시간, 떠난 사람을 너무 오래 기다리는지 | 서비스 공개 후 |
 | 하트비트 | `LoungeWebSocketConfiguration.HEARTBEAT_MILLIS` | 10초 | stompjs 기본값과 같게 | 유령 고양이가 사라지는 데 걸리는 시간, 모바일 배터리 | 배포 후 |
 | 재연결 대기 | `loungeConnection.RECONNECT_DELAY_MS` | 3초 | 서버 재시작 중 계속 두드리지 않을 만큼 | 배포 후 끊김이 잦은지 | 배포 시 |
 | 바로 옮기는 거리 | `RemoteCats.SNAP_DISTANCE` | 40도트 | 100ms에 걷는 거리(4.5도트)의 약 9배. 이보다 멀면 재연결 등으로 밀린 것으로 봄 | 남의 고양이가 순간이동하는 게 거슬리는지 | 2단계 확인 후 |
