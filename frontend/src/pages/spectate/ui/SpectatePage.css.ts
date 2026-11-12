@@ -1,4 +1,4 @@
-import { globalStyle, style } from '@vanilla-extract/css'
+import { style } from '@vanilla-extract/css'
 import { vars } from '@/shared/styles/theme.css'
 
 export const page = style({
@@ -69,12 +69,7 @@ export const editorBody = style({
   minHeight: '0',
 })
 
-globalStyle('.yRemoteSelection', {
-  background: `color-mix(in oklab, ${vars.color.accent} 40%, transparent)`,
-})
-
-globalStyle('.yRemoteSelectionHead', {
-  position: 'absolute',
-  height: '100%',
-  borderLeft: `2px solid ${vars.color.accent2}`,
+export const notice = style({
+  color: vars.color.muted,
+  fontSize: vars.text.xs,
 })

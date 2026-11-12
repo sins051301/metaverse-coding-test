@@ -7,10 +7,12 @@ import type { JudgeMode } from '@/entities/judge/api/judgeApi'
 import { problemDetailQuery } from '@/entities/problem/api/problemQueries'
 import { startLogin } from '@/features/auth/model/login'
 import { activityTracker } from '@/entities/lounge/model/activityTracker'
+import { useMyAvatarId } from '@/entities/lounge/model/rosterStore'
 import { loadDraft, saveDraft } from '@/features/edit-code/model/codeDraft'
 import { ResetCodeButton } from '@/features/edit-code/ui/ResetCodeButton'
 import { useJudge } from '@/features/judge-code/model/useJudge'
 import { useCodeSharing } from '@/features/share-code/model/useCodeSharing'
+import { PairChat } from '@/widgets/pair-chat/ui/PairChat'
 import {
   LANGUAGE_ORDER,
   LANGUAGES,
@@ -43,7 +45,8 @@ export function ProblemWorkspace({
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const [codeEditor, setCodeEditor] =
     useState<editor.IStandaloneCodeEditor | null>(null)
-  const spectatorCount = useCodeSharing(codeEditor, problemId, language)
+  const sharing = useCodeSharing(codeEditor, problemId, language)
+  const myAvatarId = useMyAvatarId()
   const { view, isJudging, judge } = useJudge(problemId)
   const [showHistory, setShowHistory] = useState(false)
 
@@ -105,81 +108,128 @@ export function ProblemWorkspace({
         </select>
       </div>
 
-      <Group orientation="horizontal" className={styles.main}>
-        <Panel
-          id="statement"
-          defaultSize={380}
-          minSize={280}
-          maxSize={520}
-          groupResizeBehavior="preserve-pixel-size"
-        >
-          {showHistory ? (
-            <SubmissionHistoryPanel problemId={problemId} />
-          ) : (
-            <ProblemStatement problem={problem} />
-          )}
-        </Panel>
-        <Separator className={styles.columnSeparator} />
-        <Panel id="code" minSize={360}>
-          <Group orientation="vertical">
-            <Panel id="editor" minSize={160}>
-              <div className={styles.editorCard}>
-                <div className={styles.editorHead}>
-                  {fileName}
-                  {spectatorCount > 0 ? (
-                    <span className={styles.spectators}>
-                      {spectatorCount}명이 구경하고 있어요
-                    </span>
-                  ) : null}
-                </div>
-                <div className={styles.editorBody}>
-                  <Suspense
-                    fallback={
-                      <p className={styles.editorLoading}>
-                        에디터를 불러오는 중이에요.
-                      </p>
-                    }
-                  >
-                    <CodeEditor
-                      path={`${problemId}/${fileName}`}
-                      language={monacoLanguage}
-                      defaultValue={
-                        loadDraft(problemId, language) ?? starterCode
+      {sharing.pairRequests.map((request) => (
+        <div key={request.memberId} className={styles.pairBanner}>
+          <span>
+            <strong className={styles.pairName}>{request.nickname}</strong>님이
+            같이 풀자고 해요.
+          </span>
+          <span className={styles.spacer} />
+          <Button
+            size="small"
+            variant="primary"
+            onClick={() => sharing.answer(request.memberId, true)}
+          >
+            수락
+          </Button>
+          <Button
+            size="small"
+            variant="quiet"
+            onClick={() => sharing.answer(request.memberId, false)}
+          >
+            거절
+          </Button>
+        </div>
+      ))}
+      {sharing.partner ? (
+        <div className={styles.pairBanner}>
+          <span>
+            <strong className={styles.pairName}>
+              {sharing.partner.nickname}
+            </strong>
+            님과 함께 풀고 있어요. 제출은 내가 할 수 있어요.
+          </span>
+          <span className={styles.spacer} />
+          <Button size="small" variant="quiet" onClick={sharing.endPair}>
+            페어 끝내기
+          </Button>
+        </div>
+      ) : null}
+
+      <div className={styles.mainRow}>
+        <Group orientation="horizontal" className={styles.main}>
+          <Panel
+            id="statement"
+            defaultSize={380}
+            minSize={280}
+            maxSize={520}
+            groupResizeBehavior="preserve-pixel-size"
+          >
+            {showHistory ? (
+              <SubmissionHistoryPanel problemId={problemId} />
+            ) : (
+              <ProblemStatement problem={problem} />
+            )}
+          </Panel>
+          <Separator className={styles.columnSeparator} />
+          <Panel id="code" minSize={360}>
+            <Group orientation="vertical">
+              <Panel id="editor" minSize={160}>
+                <div className={styles.editorCard}>
+                  <div className={styles.editorHead}>
+                    {fileName}
+                    {sharing.spectatorCount > 0 ? (
+                      <span className={styles.spectators}>
+                        {sharing.spectatorCount}명이 구경하고 있어요
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className={styles.editorBody}>
+                    <Suspense
+                      fallback={
+                        <p className={styles.editorLoading}>
+                          에디터를 불러오는 중이에요.
+                        </p>
                       }
-                      onChange={(code) => {
-                        saveDraft(problemId, language, code)
-                        activityTracker.touch()
-                      }}
-                      onMount={(mounted) => {
-                        editorRef.current = mounted
-                        setCodeEditor(mounted)
-                      }}
-                    />
-                  </Suspense>
+                    >
+                      <CodeEditor
+                        path={`${problemId}/${fileName}`}
+                        language={monacoLanguage}
+                        defaultValue={
+                          loadDraft(problemId, language) ?? starterCode
+                        }
+                        onChange={(code) => {
+                          saveDraft(problemId, language, code)
+                          activityTracker.touch()
+                        }}
+                        onMount={(mounted) => {
+                          editorRef.current = mounted
+                          setCodeEditor(mounted)
+                        }}
+                      />
+                    </Suspense>
+                  </div>
                 </div>
-              </div>
-            </Panel>
-            <Separator className={styles.rowSeparator} />
-            <Panel
-              id="result"
-              defaultSize={260}
-              minSize={120}
-              maxSize="60%"
-              groupResizeBehavior="preserve-pixel-size"
-            >
-              <JudgeResultPanel
-                view={view}
-                parameters={problem.parameters}
-                timeLimitMs={problem.timeLimitMs}
-                onRetry={() =>
-                  judgeCurrentCode(view.phase === 'idle' ? 'run' : view.mode)
-                }
-                onLogin={startLogin}
-              />
-            </Panel>
-          </Group>
-        </Panel>
-      </Group>
+              </Panel>
+              <Separator className={styles.rowSeparator} />
+              <Panel
+                id="result"
+                defaultSize={260}
+                minSize={120}
+                maxSize="60%"
+                groupResizeBehavior="preserve-pixel-size"
+              >
+                <JudgeResultPanel
+                  view={view}
+                  parameters={problem.parameters}
+                  timeLimitMs={problem.timeLimitMs}
+                  onRetry={() =>
+                    judgeCurrentCode(view.phase === 'idle' ? 'run' : view.mode)
+                  }
+                  onLogin={startLogin}
+                />
+              </Panel>
+            </Group>
+          </Panel>
+        </Group>
+        {sharing.partner ? (
+          <PairChat
+            messages={sharing.chats}
+            myAvatarId={myAvatarId}
+            onSend={sharing.sendChat}
+          />
+        ) : null}
+      </div>
 
       <div className={styles.actionBar}>
         <span className={styles.spacer} />

@@ -164,3 +164,24 @@ export const spectators = style({
   fontSize: vars.text.xs,
   fontWeight: '700',
 })
+
+export const mainRow = style({
+  flex: '1',
+  minHeight: '0',
+  display: 'flex',
+  gap: vars.space.sm,
+})
+
+export const pairBanner = style({
+  flex: 'none',
+  display: 'flex',
+  alignItems: 'center',
+  gap: vars.space.sm,
+  padding: `${vars.space.xs} ${vars.space.md}`,
+  borderRadius: vars.radius.pill,
+  background: vars.color.paper3,
+})
+
+export const pairName = style({
+  color: vars.color.accent,
+})
