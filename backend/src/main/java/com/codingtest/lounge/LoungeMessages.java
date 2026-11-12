@@ -42,6 +42,12 @@ final class LoungeMessages {
 	record RecentSolve(String nickname, String problemTitle, Instant solvedAt) {
 	}
 
+	/**
+	 * 라운지 전체 채팅 한 줄. 게스트도 쓸 수 있다. 저장하지 않고 서버 메모리에 최근 것만 둔다.
+	 */
+	record ChatMessage(String avatarId, String nickname, String text, Instant sentAt) {
+	}
+
 	// 클라이언트 → 서버 (/app/lounge/...)
 
 	/**
@@ -62,6 +68,9 @@ final class LoungeMessages {
 	record ActivityRequest(String activity) {
 	}
 
+	record ChatRequest(String text) {
+	}
+
 	// 서버 → 클라이언트
 
 	/**
@@ -77,6 +86,14 @@ final class LoungeMessages {
 	 *
 	 * @param avatarIds 푼 회원의 아바타들 (탭을 여러 개 열었으면 여럿, 라운지에 없으면 비어 있음). 머리 위에 별을 띄운다
 	 */
+	record ChatEvent(String type, ChatMessage chat) {
+
+		ChatEvent(ChatMessage chat) {
+			this("chat", chat);
+		}
+
+	}
+
 	record SolvedEvent(String type, List<String> avatarIds, RecentSolve solve) {
 
 		SolvedEvent(List<String> avatarIds, RecentSolve solve) {
@@ -93,15 +110,23 @@ final class LoungeMessages {
 	 * @param avatars    snapshot 의 전체 목록 (나 포함)
 	 * @param deskId       sit-rejected 의 책상 번호
 	 * @param recentSolves snapshot 의 최근 푼 기록 (새것이 먼저)
+	 * @param recentChats  snapshot 의 최근 채팅 (오래된 것이 먼저)
+	 * @param reason       chat-rejected 의 이유 (too-long, too-fast)
 	 */
-	record PersonalMessage(String type, String myAvatarId, List<AvatarState> avatars, Integer deskId, List<RecentSolve> recentSolves) {
+	record PersonalMessage(String type, String myAvatarId, List<AvatarState> avatars, Integer deskId,
+			List<RecentSolve> recentSolves, List<ChatMessage> recentChats, String reason) {
 
-		static PersonalMessage snapshot(String myAvatarId, List<AvatarState> avatars, List<RecentSolve> recentSolves) {
-			return new PersonalMessage("snapshot", myAvatarId, avatars, null, recentSolves);
+		static PersonalMessage snapshot(String myAvatarId, List<AvatarState> avatars, List<RecentSolve> recentSolves,
+				List<ChatMessage> recentChats) {
+			return new PersonalMessage("snapshot", myAvatarId, avatars, null, recentSolves, recentChats, null);
 		}
 
 		static PersonalMessage sitRejected(int deskId) {
-			return new PersonalMessage("sit-rejected", null, null, deskId, null);
+			return new PersonalMessage("sit-rejected", null, null, deskId, null, null, null);
+		}
+
+		static PersonalMessage chatRejected(String reason) {
+			return new PersonalMessage("chat-rejected", null, null, null, null, null, reason);
 		}
 
 	}

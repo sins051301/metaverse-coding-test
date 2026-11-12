@@ -1,11 +1,14 @@
 package com.codingtest.lounge;
 
 import com.codingtest.lounge.LoungeMessages.AvatarState;
+import com.codingtest.lounge.LoungeMessages.ChatMessage;
 import com.codingtest.lounge.LoungeMessages.JoinRequest;
 import com.codingtest.lounge.LoungeMessages.MoveRequest;
 import com.codingtest.lounge.LoungeMessages.RecentSolve;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -33,6 +36,10 @@ class LoungeRegistry {
 	private static final Pattern GUEST_NICKNAME = Pattern.compile("익명_[0-9A-F]{4}");
 	private static final Set<String> ACTIVITIES = Set.of("idle", "typing", "napping");
 	private static final int RECENT_SOLVE_LIMIT = 5;
+	static final int CHAT_MAX_LENGTH = 200;
+	private static final int RECENT_CHAT_LIMIT = 30;
+	// 도배 방지: 한 아바타는 이 간격 안에 한 번만 말할 수 있다 (게스트도 쓰므로 서버가 막는다)
+	private static final Duration CHAT_INTERVAL = Duration.ofSeconds(1);
 
 	private final Map<String, AvatarState> avatars = new ConcurrentHashMap<>();
 	private final Map<Integer, String> deskOwners = new ConcurrentHashMap<>();
@@ -40,6 +47,9 @@ class LoungeRegistry {
 	private final Map<String, Long> avatarUsers = new ConcurrentHashMap<>();
 	// 최근 푼 기록. 새것이 앞. 여러 채점 스레드가 동시에 넣으므로 synchronized 로 감싸서 쓴다
 	private final Deque<RecentSolve> recentSolves = new ArrayDeque<>();
+	// 최근 채팅. 오래된 것이 앞. recentSolves 처럼 synchronized 로 감싸서 쓴다
+	private final Deque<ChatMessage> recentChats = new ArrayDeque<>();
+	private final Map<String, Instant> lastChatAt = new ConcurrentHashMap<>();
 
 	AvatarState join(LoungeIdentity identity, JoinRequest request) {
 		String avatarId = identity.avatarId();
@@ -133,8 +143,51 @@ class LoungeRegistry {
 		}
 	}
 
+	sealed interface ChatResult permits Accepted, Rejected {
+	}
+
+	record Accepted(ChatMessage chat) implements ChatResult {
+	}
+
+	record Rejected(String reason) implements ChatResult {
+	}
+
+	/**
+	 * 채팅 한 줄을 받는다. 입장한 아바타만, 공백을 뺀 1~200자만, 직전 메시지에서 1초가 지났을 때만.
+	 */
+	ChatResult chat(String avatarId, String rawText, Instant now) {
+		AvatarState avatar = avatars.get(avatarId);
+		String text = rawText == null ? "" : rawText.strip();
+		if (avatar == null || text.isEmpty()) {
+			return new Rejected("empty");
+		}
+		if (text.length() > CHAT_MAX_LENGTH) {
+			return new Rejected("too-long");
+		}
+		Instant previous = lastChatAt.put(avatarId, now);
+		if (previous != null && Duration.between(previous, now).compareTo(CHAT_INTERVAL) < 0) {
+			lastChatAt.put(avatarId, previous);
+			return new Rejected("too-fast");
+		}
+		ChatMessage chat = new ChatMessage(avatarId, avatar.nickname(), text, now);
+		synchronized (recentChats) {
+			recentChats.addLast(chat);
+			while (recentChats.size() > RECENT_CHAT_LIMIT) {
+				recentChats.removeFirst();
+			}
+		}
+		return new Accepted(chat);
+	}
+
+	List<ChatMessage> recentChats() {
+		synchronized (recentChats) {
+			return List.copyOf(recentChats);
+		}
+	}
+
 	Optional<AvatarState> leave(String avatarId) {
 		avatarUsers.remove(avatarId);
+		lastChatAt.remove(avatarId);
 		AvatarState removed = avatars.remove(avatarId);
 		if (removed != null && removed.deskId() != null) {
 			deskOwners.remove(removed.deskId(), avatarId);

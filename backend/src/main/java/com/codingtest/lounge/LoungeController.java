@@ -2,6 +2,8 @@ package com.codingtest.lounge;
 
 import com.codingtest.lounge.LoungeMessages.ActivityRequest;
 import com.codingtest.lounge.LoungeMessages.AvatarState;
+import com.codingtest.lounge.LoungeMessages.ChatEvent;
+import com.codingtest.lounge.LoungeMessages.ChatRequest;
 import com.codingtest.lounge.LoungeMessages.JoinRequest;
 import com.codingtest.lounge.LoungeMessages.LoungeEvent;
 import com.codingtest.lounge.LoungeMessages.MoveRequest;
@@ -49,7 +51,7 @@ class LoungeController {
 	void join(JoinRequest request, LoungeIdentity identity) {
 		AvatarState avatar = registry.join(identity, request);
 		messagingTemplate.convertAndSendToUser(identity.getName(), PERSONAL_QUEUE,
-				PersonalMessage.snapshot(avatar.id(), registry.all(), registry.recentSolves()));
+				PersonalMessage.snapshot(avatar.id(), registry.all(), registry.recentSolves(), registry.recentChats()));
 		broadcast("joined", avatar);
 	}
 
@@ -69,6 +71,16 @@ class LoungeController {
 	@MessageMapping("/lounge/stand")
 	void stand(LoungeIdentity identity) {
 		registry.stand(identity.avatarId()).ifPresent(avatar -> broadcast("stood", avatar));
+	}
+
+	// 라운지 전체 채팅. 게스트도 쓸 수 있어 길이·빈도는 서버가 막는다. 거절하면 보낸 사람에게만 이유를 알린다
+	@MessageMapping("/lounge/chat")
+	void chat(ChatRequest request, LoungeIdentity identity) {
+		switch (registry.chat(identity.avatarId(), request.text(), Instant.now())) {
+			case LoungeRegistry.Accepted accepted -> messagingTemplate.convertAndSend(TOPIC, new ChatEvent(accepted.chat()));
+			case LoungeRegistry.Rejected rejected -> messagingTemplate.convertAndSendToUser(identity.getName(), PERSONAL_QUEUE,
+					PersonalMessage.chatRejected(rejected.reason()));
+		}
 	}
 
 	// 타이핑·낮잠. 키 하나마다가 아니라 상태가 바뀔 때만 온다
