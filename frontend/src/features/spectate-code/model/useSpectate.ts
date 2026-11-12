@@ -28,6 +28,8 @@ export type SpectateState =
       problemId: number
       language: Language
       nickname: string
+      pairable: boolean
+      ownerAway: boolean
       documentVersion: number
     }
   | { phase: 'closed' }
@@ -40,14 +42,23 @@ function myNickname() {
   return (myAvatarId && avatars.get(myAvatarId)?.nickname) || '나'
 }
 
-export function useSpectate(roomId: string) {
+export function useSpectate(routeRoomId: string) {
+  const [target, setTarget] = useState(routeRoomId)
+  const [roomId, setRoomId] = useState<string | null>(null)
   const [state, setState] = useState<SpectateState>({ phase: 'connecting' })
   const [codeEditor, setCodeEditor] =
     useState<editor.IStandaloneCodeEditor | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [pair, setPair] = useState<PairPhase>('none')
   const [chats, setChats] = useState<PairChatMessage[]>([])
+  const roomIdRef = useRef(routeRoomId)
   const pairedRef = useRef(false)
+
+  if (routeRoomId !== target && routeRoomId !== roomId) {
+    setTarget(routeRoomId)
+    setRoomId(null)
+    setState({ phase: 'connecting' })
+  }
 
   useEffect(() => {
     pairedRef.current = pair === 'paired'
@@ -55,6 +66,7 @@ export function useSpectate(roomId: string) {
 
   useEffect(() => {
     let current: Session | null = null
+    roomIdRef.current = target
 
     function apply(kind: string, payload: string) {
       if (!current) return
@@ -65,8 +77,12 @@ export function useSpectate(roomId: string) {
 
     const unsubscribeDesk = loungeConnection.onDeskMessage((frame) => {
       const message = JSON.parse(frame.body) as DeskMessage
-      if (message.roomId !== roomId) return
+      const answersMyJoin =
+        message.type === 'opened' && message.target === roomIdRef.current
+      if (message.roomId !== roomIdRef.current && !answersMyJoin) return
       if (message.type === 'opened' || message.type === 'reset') {
+        roomIdRef.current = message.roomId
+        setRoomId(message.roomId)
         const doc = new Y.Doc()
         current = { doc, awareness: new Awareness(doc) }
         setSession(current)
@@ -75,11 +91,19 @@ export function useSpectate(roomId: string) {
           problemId: message.problemId,
           language: message.language,
           nickname: message.nickname,
+          pairable: message.pairable,
+          ownerAway: false,
           documentVersion:
             previous.phase === 'watching' ? previous.documentVersion + 1 : 0,
         }))
       } else if (message.type === 'update' || message.type === 'full') {
         apply(message.kind, message.payload)
+      } else if (message.type === 'owner-away') {
+        setState((previous) =>
+          previous.phase === 'watching'
+            ? { ...previous, ownerAway: true }
+            : previous,
+        )
       } else if (message.type === 'closed') {
         setState({ phase: 'closed' })
         setPair('none')
@@ -106,18 +130,18 @@ export function useSpectate(roomId: string) {
     })
     const join = () => {
       setPair('none')
-      loungeConnection.send(`/app/desk/${roomId}/join`)
+      loungeConnection.send(`/app/desk/${roomIdRef.current}/join`)
     }
     const unsubscribeJoined = loungeConnection.onJoined(join)
     if (loungeConnection.isReady()) join()
 
     return () => {
-      loungeConnection.send(`/app/desk/${roomId}/leave`)
+      loungeConnection.send(`/app/desk/${roomIdRef.current}/leave`)
       unsubscribeDesk()
       unsubscribeJoined()
       setSession(null)
     }
-  }, [roomId])
+  }, [target])
 
   useEffect(() => {
     const model = codeEditor?.getModel()
@@ -133,7 +157,7 @@ export function useSpectate(roomId: string) {
     const stopLabels = watchCursorLabels(awareness)
     const send = (kind: 'doc' | 'awareness', bytes: Uint8Array) => {
       if (pairedRef.current) {
-        loungeConnection.send(`/app/desk/${roomId}/update`, {
+        loungeConnection.send(`/app/desk/${roomIdRef.current}/update`, {
           kind,
           payload: bytesToBase64(bytes),
         })
@@ -164,7 +188,7 @@ export function useSpectate(roomId: string) {
       stopLabels()
       binding.destroy()
     }
-  }, [codeEditor, session, roomId])
+  }, [codeEditor, session])
 
   useEffect(() => {
     if (!session) return
@@ -176,21 +200,19 @@ export function useSpectate(roomId: string) {
 
   const requestPair = useCallback(() => {
     setPair('requested')
-    loungeConnection.send(`/app/desk/${roomId}/pair-request`)
-  }, [roomId])
+    loungeConnection.send(`/app/desk/${roomIdRef.current}/pair-request`)
+  }, [])
 
   const endPair = useCallback(() => {
-    loungeConnection.send(`/app/desk/${roomId}/pair-end`)
-  }, [roomId])
+    loungeConnection.send(`/app/desk/${roomIdRef.current}/pair-end`)
+  }, [])
 
-  const sendChat = useCallback(
-    (text: string) => {
-      loungeConnection.send(`/app/desk/${roomId}/chat`, { text })
-    },
-    [roomId],
-  )
+  const sendChat = useCallback((text: string) => {
+    loungeConnection.send(`/app/desk/${roomIdRef.current}/chat`, { text })
+  }, [])
 
   return {
+    roomId: roomId ?? target,
     state,
     pair,
     chats,

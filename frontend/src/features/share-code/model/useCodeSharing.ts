@@ -1,5 +1,5 @@
 import type { editor } from 'monaco-editor'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MonacoBinding } from 'y-monaco'
 import {
   applyAwarenessUpdate,
@@ -21,6 +21,8 @@ const REMOTE_ORIGIN = 'remote'
 
 export type PairMember = { memberId: string; nickname: string }
 
+export type Partner = PairMember & { away: boolean }
+
 function myNickname() {
   const { avatars, myAvatarId } = rosterStore.getState()
   return (myAvatarId && avatars.get(myAvatarId)?.nickname) || '주인'
@@ -33,8 +35,9 @@ export function useCodeSharing(
 ) {
   const [spectatorCount, setSpectatorCount] = useState(0)
   const [pairRequests, setPairRequests] = useState<PairMember[]>([])
-  const [partner, setPartner] = useState<PairMember | null>(null)
+  const [partner, setPartner] = useState<Partner | null>(null)
   const [chats, setChats] = useState<PairChatMessage[]>([])
+  const roomIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     const model = codeEditor?.getModel()
@@ -55,11 +58,10 @@ export function useCodeSharing(
     const stopLabels = watchCursorLabels(awareness)
     let spectators = 0
 
-    const roomId = () => rosterStore.getState().myAvatarId
     const host = () =>
       loungeConnection.send('/app/desk/host', { problemId, language })
     const sendUpdate = (kind: 'doc' | 'awareness', bytes: Uint8Array) => {
-      const room = roomId()
+      const room = roomIdRef.current
       if (spectators > 0 && room !== null) {
         loungeConnection.send(`/app/desk/${room}/update`, {
           kind,
@@ -92,7 +94,11 @@ export function useCodeSharing(
 
     const unsubscribeDesk = loungeConnection.onDeskMessage((frame) => {
       const message = JSON.parse(frame.body) as DeskMessage
-      const room = roomId()
+      if (message.type === 'hosted') {
+        roomIdRef.current = message.roomId
+        return
+      }
+      const room = roomIdRef.current
       if (message.roomId !== room || room === null) {
         return
       }
@@ -124,10 +130,16 @@ export function useCodeSharing(
           { memberId: message.memberId, nickname: message.nickname },
         ])
       } else if (message.type === 'pair-started') {
-        setPartner({ memberId: message.memberId, nickname: message.nickname })
+        setPartner({
+          memberId: message.memberId,
+          nickname: message.nickname,
+          away: false,
+        })
         setPairRequests((previous) =>
           previous.filter((request) => request.memberId !== message.memberId),
         )
+      } else if (message.type === 'pair-away') {
+        setPartner((previous) => previous && { ...previous, away: true })
       } else if (message.type === 'pair-ended') {
         setPartner(null)
         setChats([])
@@ -158,6 +170,7 @@ export function useCodeSharing(
       loungeConnection.send('/app/desk/close')
       unsubscribeDesk()
       unsubscribeJoined()
+      roomIdRef.current = null
       doc.off('update', onDocUpdate)
       awareness.off('update', onAwarenessUpdate)
       stopLabels()
@@ -182,12 +195,12 @@ export function useCodeSharing(
   }, [])
 
   const endPair = useCallback(() => {
-    const room = rosterStore.getState().myAvatarId
+    const room = roomIdRef.current
     if (room !== null) loungeConnection.send(`/app/desk/${room}/pair-end`)
   }, [])
 
   const sendChat = useCallback((text: string) => {
-    const room = rosterStore.getState().myAvatarId
+    const room = roomIdRef.current
     if (room !== null) loungeConnection.send(`/app/desk/${room}/chat`, { text })
   }, [])
 
