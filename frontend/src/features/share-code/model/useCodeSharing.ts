@@ -12,6 +12,7 @@ import type {
   PairChatMessage,
 } from '@/entities/desk/api/deskMessages'
 import { watchCursorLabels } from '@/entities/desk/lib/cursorLabels'
+import { pairRequestStore } from '@/entities/desk/model/pairRequestStore'
 import { loungeConnection } from '@/entities/lounge/api/loungeConnection'
 import { rosterStore } from '@/entities/lounge/model/rosterStore'
 import type { Language } from '@/shared/config/languages'
@@ -38,6 +39,11 @@ export function useCodeSharing(
   const [partner, setPartner] = useState<Partner | null>(null)
   const [chats, setChats] = useState<PairChatMessage[]>([])
   const roomIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    pairRequestStore.set(pairRequests.map((request) => request.nickname))
+    return () => pairRequestStore.set([])
+  }, [pairRequests])
 
   useEffect(() => {
     const model = codeEditor?.getModel()

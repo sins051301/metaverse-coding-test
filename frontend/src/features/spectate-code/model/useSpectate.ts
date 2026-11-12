@@ -91,7 +91,9 @@ export function useSpectate(routeRoomId: string) {
           problemId: message.problemId,
           language: message.language,
           nickname: message.nickname,
-          pairable: message.pairable,
+          pairable:
+            message.pairable ??
+            (previous.phase === 'watching' && previous.pairable),
           ownerAway: false,
           documentVersion:
             previous.phase === 'watching' ? previous.documentVersion + 1 : 0,
