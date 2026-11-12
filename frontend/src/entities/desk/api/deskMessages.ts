@@ -11,7 +11,7 @@ export type DeskMessage =
       problemId: number
       language: Language
       nickname: string
-      pairable: boolean
+      pairable: boolean | null
     }
   | {
       type: 'update' | 'full'
