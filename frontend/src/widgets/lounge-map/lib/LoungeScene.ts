@@ -13,6 +13,7 @@ import {
   applyCatLook,
   type CatView,
   createCatView,
+  recentSpeech,
   FAILURE_SHOW_MS,
   SOLVED_SHOW_MS,
   seatPosition,
@@ -173,6 +174,7 @@ export class LoungeScene extends Phaser.Scene {
       state.view === 'lounge' && state.seatedDeskId === null && !isTyping()
     if (!walking) {
       this.catBody.setVelocity(0, 0)
+      Phaser.Input.Keyboard.JustDown(this.keys.F)
       return
     }
     const moving = this.move()
@@ -330,7 +332,7 @@ export class LoungeScene extends Phaser.Scene {
 
   private applyMyLook(time: number) {
     const { seatedDeskId, failedAt } = loungeStore.getState()
-    const { myAvatarId, solvedAt } = rosterStore.getState()
+    const { myAvatarId, solvedAt, lastChatAt } = rosterStore.getState()
     const solvedTime =
       myAvatarId === null ? undefined : solvedAt.get(myAvatarId)
     const now = Date.now()
@@ -343,6 +345,10 @@ export class LoungeScene extends Phaser.Scene {
         solved: solvedTime !== undefined && now - solvedTime < SOLVED_SHOW_MS,
         failed:
           failedAt !== null && performance.now() - failedAt < FAILURE_SHOW_MS,
+        speech:
+          myAvatarId === null
+            ? null
+            : recentSpeech(lastChatAt.get(myAvatarId), now),
       },
       time,
     )
@@ -437,6 +443,7 @@ export class LoungeScene extends Phaser.Scene {
     }
     const resolution = camera.zoom * window.devicePixelRatio
     this.nameTag.setResolution(resolution)
+    this.myView.speech.setResolution(resolution)
     this.boardText.setResolution(resolution)
     this.remoteCats.setNameResolution(resolution)
   }

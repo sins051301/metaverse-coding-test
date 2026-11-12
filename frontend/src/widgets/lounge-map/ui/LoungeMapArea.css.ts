@@ -113,3 +113,35 @@ globalStyle(`${keys} span`, {
   alignItems: 'center',
   gap: vars.space.xs,
 })
+
+export const side = style({
+  flex: '1',
+  minHeight: '0',
+  display: 'flex',
+  flexDirection: 'column',
+})
+
+export const tabs = style({
+  flex: 'none',
+  display: 'flex',
+  gap: vars.space.xxs,
+  padding: `${vars.space.xs} ${vars.space.xs} ${vars.space.xxs}`,
+})
+
+export const tab = style({
+  padding: `${vars.space.xxs} ${vars.space.sm}`,
+  border: 0,
+  borderRadius: vars.radius.pill,
+  background: 'transparent',
+  color: vars.color.muted,
+  fontFamily: vars.font.button,
+  fontSize: vars.text.xs,
+  fontWeight: '700',
+  cursor: 'pointer',
+  selectors: {
+    '&[aria-selected="true"]': {
+      background: vars.color.paper3,
+      color: vars.color.ink,
+    },
+  },
+})

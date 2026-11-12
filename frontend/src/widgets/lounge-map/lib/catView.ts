@@ -83,6 +83,7 @@ export type CatView = {
   z: Phaser.GameObjects.Image
   star: Phaser.GameObjects.Image
   solved: Phaser.GameObjects.Image
+  speech: Phaser.GameObjects.Text
 }
 
 const EFFECT = {
@@ -129,6 +130,8 @@ const NAME_TAG_Y = -FRAME_SIZE + 2 - NAME_TAG_GAP
 const BUBBLE_POSITION = { x: -16, y: HEAD_TOP }
 const Z_POSITION = { x: 5, y: HEAD_TOP + 1 }
 const STAR_BOTTOM = NAME_TAG_Y - 10
+const SPEECH_WRAP_WIDTH = 90
+export const SPEECH_SHOW_MS = 4_000
 
 export function createCatView(
   scene: Phaser.Scene,
@@ -167,10 +170,22 @@ export function createCatView(
     .image(0, NAME_TAG_Y + 2, EFFECT.solved)
     .setOrigin(0.5, 1)
     .setVisible(false)
+  const speech = scene.add
+    .text(0, STAR_BOTTOM, '', {
+      fontFamily: 'Jua, sans-serif',
+      fontSize: '7px',
+      color: tokenColor(vars.color.tagInk),
+      backgroundColor: tokenColor(vars.map.frame),
+      padding: { x: 3, y: 1 },
+      wordWrap: { width: SPEECH_WRAP_WIDTH, useAdvancedWrap: true },
+      align: 'center',
+    })
+    .setOrigin(0.5, 1)
+    .setVisible(false)
   const container = scene.add
-    .container(x, y, [sprite, nameTag, bubble, z, star, solved])
+    .container(x, y, [sprite, nameTag, bubble, z, star, solved, speech])
     .setDepth(y)
-  return { container, sprite, nameTag, bubble, z, star, solved }
+  return { container, sprite, nameTag, bubble, z, star, solved, speech }
 }
 
 const EFFECT_STEP_MS = 450
@@ -183,6 +198,16 @@ export type CatLook = {
   mine: boolean
   solved: boolean
   failed: boolean
+  speech: string | null
+}
+
+export function recentSpeech(
+  lastChat: { text: string; at: number } | undefined,
+  now: number,
+) {
+  return lastChat !== undefined && now - lastChat.at < SPEECH_SHOW_MS
+    ? lastChat.text
+    : null
 }
 
 export function applyCatLook(view: CatView, look: CatLook, time: number) {
@@ -204,7 +229,14 @@ export function applyCatLook(view: CatView, look: CatLook, time: number) {
   view.z.setVisible(napping).setY(Z_POSITION.y - (step % 2))
   view.solved.setVisible(look.mine && look.solved)
   view.nameTag.setVisible(!(look.mine && look.solved))
-  view.star.setVisible(!look.mine && look.solved).setY(STAR_BOTTOM - (step % 2))
+  if (look.speech !== null && view.speech.text !== look.speech) {
+    view.speech.setText(look.speech)
+  }
+  view.speech.setVisible(look.speech !== null)
+  const starLift = look.speech === null ? 0 : view.speech.height + 1
+  view.star
+    .setVisible(!look.mine && look.solved)
+    .setY(STAR_BOTTOM - starLift - (step % 2))
 }
 
 export function seatPosition(desk: Desk) {

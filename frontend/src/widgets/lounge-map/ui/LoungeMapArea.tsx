@@ -6,6 +6,7 @@ import {
 import { readStorage, writeStorage } from '@/shared/lib/storage'
 import { Button } from '@/shared/ui/Button'
 import { ActivityStrip } from './ActivityStrip'
+import { LoungeChat } from './LoungeChat'
 import { LoungeMap } from './LoungeMap'
 import { NeighborList } from './NeighborList'
 import { RecentSolves } from './RecentSolves'
@@ -103,7 +104,37 @@ export function LoungeMapArea({ onStand }: LoungeMapAreaProps) {
         </div>
       ) : null}
       {!panel ? <RecentSolves /> : null}
-      {panel && !collapsed ? <NeighborList /> : null}
+      {!panel ? <LoungeChat variant="overlay" /> : null}
+      {panel && !collapsed ? <PanelSide /> : null}
     </aside>
+  )
+}
+
+function PanelSide() {
+  const [tab, setTab] = useState<'neighbors' | 'chat'>('neighbors')
+  return (
+    <div className={styles.side}>
+      <div className={styles.tabs} role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'neighbors'}
+          className={styles.tab}
+          onClick={() => setTab('neighbors')}
+        >
+          옆자리
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'chat'}
+          className={styles.tab}
+          onClick={() => setTab('chat')}
+        >
+          채팅
+        </button>
+      </div>
+      {tab === 'neighbors' ? <NeighborList /> : <LoungeChat variant="panel" />}
+    </div>
   )
 }

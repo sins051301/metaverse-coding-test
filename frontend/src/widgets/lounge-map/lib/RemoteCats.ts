@@ -6,6 +6,7 @@ import {
   applyCatLook,
   type CatView,
   createCatView,
+  recentSpeech,
   SOLVED_SHOW_MS,
   seatPosition,
   walkAnimationKey,
@@ -28,7 +29,7 @@ export class RemoteCats {
   }
 
   update(time: number, deltaMs: number, zoom: number) {
-    const { avatars, myAvatarId, solvedAt } = rosterStore.getState()
+    const { avatars, myAvatarId, solvedAt, lastChatAt } = rosterStore.getState()
     const now = Date.now()
     for (const [id, cat] of this.cats) {
       if (!avatars.has(id) || id === myAvatarId) {
@@ -52,6 +53,7 @@ export class RemoteCats {
           mine: false,
           solved: solvedTime !== undefined && now - solvedTime < SOLVED_SHOW_MS,
           failed: false,
+          speech: recentSpeech(lastChatAt.get(avatar.id), now),
         },
         time,
       )
@@ -68,6 +70,7 @@ export class RemoteCats {
   setNameResolution(resolution: number) {
     for (const cat of this.cats.values()) {
       cat.nameTag.setResolution(resolution)
+      cat.speech.setResolution(resolution)
     }
   }
 
@@ -81,6 +84,7 @@ export class RemoteCats {
       avatar.y,
     )
     view.nameTag.setResolution(zoom * window.devicePixelRatio)
+    view.speech.setResolution(zoom * window.devicePixelRatio)
     const cat = { ...view, avatar }
     this.cats.set(avatar.id, cat)
     return cat
