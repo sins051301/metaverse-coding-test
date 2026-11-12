@@ -50,8 +50,8 @@ final class DeskMessages {
 	 *
 	 * <ul>
 	 *   <li>hosted (주인): 방을 열었다. roomId 가 관전 주소에 쓰이는 방 id 다</li>
-	 *   <li>opened (관전자): 방에 들어왔다. target(요청할 때 쓴 id), problemId, language, nickname(주인), pairable(페어가 되는 방)</li>
-	 *   <li>reset (관전자): 주인이 문제·언어를 바꿨거나 다시 연결돼 새 문서가 됐다. 지금 문서를 버리고 full 을 기다린다</li>
+	 *   <li>opened (관전자): 방에 들어왔다. target(요청할 때 쓴 id), problemId, language, nickname(주인), pairable(내가 페어를 요청할 수 있는지)</li>
+	 *   <li>reset (관전자): 주인이 문제·언어를 바꿨거나 다시 연결돼 새 문서가 됐다. 지금 문서를 버리고 full 을 기다린다. pairable 은 opened 때 받은 값을 그대로 쓴다</li>
 	 *   <li>owner-away (관전자): 주인 연결이 끊겨 돌아오길 기다리는 중. 그동안은 아무도 글을 못 쓴다</li>
 	 *   <li>update, full: Yjs 바이트. kind, payload</li>
 	 *   <li>closed (관전자): 주인이 일어났거나 나갔다 / not-found (관전자): 열린 방이 없다</li>
@@ -76,14 +76,14 @@ final class DeskMessages {
 					null, null, null, null, null, null, null, room.pairable());
 		}
 
-		static DeskMessage opened(DeskRooms.Room room, String target) {
+		static DeskMessage opened(DeskRooms.Room room, String target, boolean pairable) {
 			return new DeskMessage("opened", room.id(), room.problemId(), room.language(), room.ownerNickname(),
-					null, null, null, null, null, null, target, room.pairable());
+					null, null, null, null, null, null, target, pairable);
 		}
 
 		static DeskMessage reset(DeskRooms.Room room) {
 			return new DeskMessage("reset", room.id(), room.problemId(), room.language(), room.ownerNickname(),
-					null, null, null, null, null, null, null, room.pairable());
+					null, null, null, null, null, null, null, null);
 		}
 
 		static DeskMessage bytes(String type, String roomId, String kind, String payload) {

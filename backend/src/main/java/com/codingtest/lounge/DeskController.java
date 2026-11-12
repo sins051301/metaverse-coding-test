@@ -91,7 +91,7 @@ class DeskController {
 		String me = identity.avatarId();
 		rooms.join(target, identity).ifPresentOrElse(joined -> {
 			Room room = joined.room();
-			send(me, DeskMessage.opened(room, target));
+			send(me, DeskMessage.opened(room, target, joined.pairable()));
 			if (room.ownerAway()) {
 				send(me, DeskMessage.ownerAway(room.id()));
 			} else {

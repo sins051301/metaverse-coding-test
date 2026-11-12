@@ -58,10 +58,11 @@ class DeskRooms {
 	}
 
 	/**
+	 * @param pairable       이 관전자가 페어를 요청할 수 있는 방인지 (회원 주인의 방이고, 관전자가 주인 본인이 아님). 게스트도 로그인하면 되므로 true
 	 * @param resumedPartner 페어 상대가 다시 들어와 페어를 이어 간다
 	 * @param replacedAvatarId 상대의 예전 연결 (다른 탭에서 들어왔거나 끊긴 줄 모르는 연결). 페어가 끝났다고 알린다
 	 */
-	record Joined(Room room, boolean resumedPartner, String replacedAvatarId) {
+	record Joined(Room room, boolean pairable, boolean resumedPartner, String replacedAvatarId) {
 	}
 
 	record Left(Room room, boolean endedPair) {
@@ -168,7 +169,8 @@ class DeskRooms {
 			state.partnerAvatarId = spectator.avatarId();
 			state.partnerAwayTicket = 0;
 		}
-		return Optional.of(new Joined(state.snapshot(), resumedPartner, replaced));
+		boolean pairable = state.pairable() && !(spectator.member() && spectator.userId().equals(state.ownerUserId));
+		return Optional.of(new Joined(state.snapshot(), pairable, resumedPartner, replaced));
 	}
 
 	// 관전 화면을 닫고 나감. 페어 상대였으면 기다리지 않고 페어를 끝낸다 (스스로 나간 것이므로)
