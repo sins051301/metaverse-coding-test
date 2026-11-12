@@ -229,6 +229,88 @@ class LoungeWebSocketTest {
 	}
 
 	@Test
+	@DisplayName("페어: 로그인한 관전자의 요청을 주인이 수락하면, 상대의 변경이 주인·다른 관전자에게 가고 1:1 채팅은 두 사람만 받는다")
+	void pairPartnerCanWriteAndChat() throws Exception {
+		LoungeClient owner = connect(null);
+		String ownerId = owner.join(100, 120, 7);
+		owner.send("/app/desk/host", Map.of("problemId", 1, "language", "JAVA"));
+		User user = userService.findOrCreate("pair-test-" + UUID.randomUUID(), "pair@example.com");
+		LoungeClient partner = connect("accessToken=" + tokenService.issue(user.getId()));
+		String partnerId = partner.join(160, 130, null);
+		LoungeClient spectator = connect(null);
+		spectator.join(200, 150, null);
+		partner.send("/app/desk/" + ownerId + "/join", Map.of());
+		spectator.send("/app/desk/" + ownerId + "/join", Map.of());
+		partner.awaitDesk("opened");
+		spectator.awaitDesk("opened");
+
+		partner.send("/app/desk/" + ownerId + "/update", Map.of("kind", "doc", "payload", "AQID"));
+		owner.assertNoDesk("update");
+
+		partner.send("/app/desk/" + ownerId + "/pair-request", Map.of());
+		JsonNode requested = owner.awaitDesk("pair-requested");
+		assertThat(requested.path("memberId").asString()).isEqualTo(partnerId);
+		assertThat(requested.path("nickname").asString()).isEqualTo(user.getNickname());
+		owner.send("/app/desk/pair-accept", Map.of("memberId", partnerId));
+		partner.awaitDesk("pair-started");
+		owner.awaitDesk("pair-started");
+
+		partner.send("/app/desk/" + ownerId + "/update", Map.of("kind", "doc", "payload", "BAUG"));
+		assertThat(owner.awaitDesk("update").path("payload").asString()).isEqualTo("BAUG");
+		assertThat(spectator.awaitDesk("update").path("payload").asString()).isEqualTo("BAUG");
+
+		partner.send("/app/desk/" + ownerId + "/chat", Map.of("text", "5번째 줄 봐 주세요"));
+		assertThat(owner.awaitDesk("chat").path("text").asString()).isEqualTo("5번째 줄 봐 주세요");
+		spectator.assertNoDesk("chat");
+
+		owner.send("/app/desk/" + ownerId + "/pair-end", Map.of());
+		partner.awaitDesk("pair-ended");
+		partner.send("/app/desk/" + ownerId + "/update", Map.of("kind", "doc", "payload", "BwgJ"));
+		spectator.assertNoDesk("update");
+	}
+
+	@Test
+	@DisplayName("페어 요청은 로그인한 사람만 보낼 수 있다 (게스트 요청은 주인에게 가지 않는다)")
+	void guestCannotRequestPair() throws Exception {
+		LoungeClient owner = connect(null);
+		String ownerId = owner.join(100, 120, 7);
+		owner.send("/app/desk/host", Map.of("problemId", 1, "language", "JAVA"));
+		LoungeClient guest = connect(null);
+		guest.join(160, 130, null);
+		guest.send("/app/desk/" + ownerId + "/join", Map.of());
+		guest.awaitDesk("opened");
+
+		guest.send("/app/desk/" + ownerId + "/pair-request", Map.of());
+		owner.assertNoDesk("pair-requested");
+	}
+
+	@Test
+	@DisplayName("전체 채팅: 게스트도 말할 수 있고 모두에게 방송된다. 200자 초과·1초 안 연속은 거절, 나중에 들어온 사람은 최근 채팅을 받는다")
+	void loungeChatWithLimits() throws Exception {
+		LoungeClient speaker = connect(null);
+		String speakerId = speaker.join(100, 120, null);
+		LoungeClient listener = connect(null);
+		listener.join(200, 150, null);
+
+		speaker.send("/app/lounge/chat", Map.of("text", "  안녕하세요  "));
+		JsonNode chat = listener.awaitEventOfType("chat");
+		assertThat(chat.path("chat").path("avatarId").asString()).isEqualTo(speakerId);
+		assertThat(chat.path("chat").path("text").asString()).isEqualTo("안녕하세요");
+
+		speaker.send("/app/lounge/chat", Map.of("text", "바로 또"));
+		assertThat(speaker.awaitPersonal("chat-rejected").path("reason").asString()).isEqualTo("too-fast");
+
+		Thread.sleep(1100);
+		speaker.send("/app/lounge/chat", Map.of("text", "가".repeat(201)));
+		assertThat(speaker.awaitPersonal("chat-rejected").path("reason").asString()).isEqualTo("too-long");
+
+		LoungeClient latecomer = connect(null);
+		latecomer.join(160, 130, null);
+		assertThat(latecomer.snapshot.path("recentChats").valueStream().map(item -> item.path("text").asString()).toList())
+				.contains("안녕하세요");
+	}
+
+	@Test
 	@DisplayName("허용한 프론트 주소가 아닌 다른 사이트(Origin)에서는 연결할 수 없다")
 	void rejectsOtherOrigins() {
 		assertThatThrownBy(() -> connect(null, "http://evil.example")).isInstanceOf(Exception.class);
