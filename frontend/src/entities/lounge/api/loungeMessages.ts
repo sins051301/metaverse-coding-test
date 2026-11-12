@@ -23,6 +23,13 @@ export type RecentSolve = {
   solvedAt: string
 }
 
+export type ChatMessage = {
+  avatarId: string
+  nickname: string
+  text: string
+  sentAt: string
+}
+
 export type JoinRequest = {
   nickname: string
   coat: Coat
@@ -45,6 +52,7 @@ export type LoungeEvent =
       avatar: AvatarState
     }
   | { type: 'solved'; avatarIds: string[]; solve: RecentSolve }
+  | { type: 'chat'; chat: ChatMessage }
 
 export type PersonalMessage =
   | {
@@ -52,5 +60,7 @@ export type PersonalMessage =
       myAvatarId: string
       avatars: AvatarState[]
       recentSolves: RecentSolve[]
+      recentChats: ChatMessage[]
     }
   | { type: 'sit-rejected'; deskId: number }
+  | { type: 'chat-rejected'; reason: 'empty' | 'too-long' | 'too-fast' }

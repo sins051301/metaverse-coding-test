@@ -18,6 +18,11 @@ import {
 
 const MOVE_SEND_INTERVAL_MS = 100
 const RECONNECT_DELAY_MS = 3000
+const CHAT_REJECTION_NOTICE = {
+  empty: '보낼 내용을 적어 주세요.',
+  'too-long': '200자까지 보낼 수 있어요.',
+  'too-fast': '조금 천천히 보내 주세요.',
+}
 
 type Position = { x: number; y: number; direction: Direction }
 
@@ -67,6 +72,10 @@ function publishActivity() {
 
 function onEvent(message: IMessage) {
   const event = JSON.parse(message.body) as LoungeEvent
+  if (event.type === 'chat') {
+    rosterStore.addChat(event.chat, Date.now())
+    return
+  }
   if (event.type === 'solved') {
     rosterStore.recordSolve(event.avatarIds, event.solve, Date.now())
     return
@@ -90,6 +99,7 @@ function onPersonal(message: IMessage) {
       personal.myAvatarId,
       personal.avatars,
       personal.recentSolves,
+      personal.recentChats,
     )
     if (activityTracker.get() !== 'idle') {
       publishActivity()
@@ -102,6 +112,10 @@ function onPersonal(message: IMessage) {
       moveToFreeDesk()
     }
     connectedListeners.forEach((listener) => listener())
+    return
+  }
+  if (personal.type === 'chat-rejected') {
+    rosterStore.setChatNotice(CHAT_REJECTION_NOTICE[personal.reason])
     return
   }
   if (personal.deskId === loungeStore.getState().seatedDeskId) {
@@ -220,6 +234,9 @@ export const loungeConnection = {
     return () => {
       connectedListeners.delete(listener)
     }
+  },
+  sendChat(text: string) {
+    publish('/app/lounge/chat', { text })
   },
   requestSit(deskId: number) {
     if (client?.connected && rosterStore.getState().myAvatarId !== null) {

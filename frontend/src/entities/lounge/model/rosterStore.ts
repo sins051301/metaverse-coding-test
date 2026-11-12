@@ -1,8 +1,11 @@
 import { useSyncExternalStore } from 'react'
 import type {
   AvatarState,
+  ChatMessage,
   RecentSolve,
 } from '@/entities/lounge/api/loungeMessages'
+
+const CHAT_HISTORY_LIMIT = 30
 
 type RosterState = {
   connected: boolean
@@ -10,6 +13,9 @@ type RosterState = {
   avatars: ReadonlyMap<string, AvatarState>
   recentSolves: readonly RecentSolve[]
   solvedAt: ReadonlyMap<string, number>
+  chats: readonly ChatMessage[]
+  lastChatAt: ReadonlyMap<string, { text: string; at: number }>
+  chatNotice: string | null
 }
 
 let state: RosterState = {
@@ -18,6 +24,9 @@ let state: RosterState = {
   avatars: new Map(),
   recentSolves: [],
   solvedAt: new Map(),
+  chats: [],
+  lastChatAt: new Map(),
+  chatNotice: null,
 }
 const listeners = new Set<() => void>()
 
@@ -41,12 +50,26 @@ export const rosterStore = {
     myAvatarId: string,
     avatars: AvatarState[],
     recentSolves: RecentSolve[],
+    chats: ChatMessage[],
   ) {
     update({
       myAvatarId,
       avatars: new Map(avatars.map((avatar) => [avatar.id, avatar])),
       recentSolves,
+      chats,
     })
+  },
+  addChat(chat: ChatMessage, now: number) {
+    const lastChatAt = new Map(state.lastChatAt)
+    lastChatAt.set(chat.avatarId, { text: chat.text, at: now })
+    update({
+      chats: [...state.chats, chat].slice(-CHAT_HISTORY_LIMIT),
+      lastChatAt,
+      chatNotice: null,
+    })
+  },
+  setChatNotice(chatNotice: string | null) {
+    update({ chatNotice })
   },
   recordSolve(avatarIds: string[], solve: RecentSolve, now: number) {
     const solvedAt = new Map(state.solvedAt)
@@ -77,6 +100,18 @@ export function occupiedDeskIds(): Set<number> {
     }
   }
   return desks
+}
+
+export function useMyAvatarId(): string | null {
+  return useSyncExternalStore(rosterStore.subscribe, () => state.myAvatarId)
+}
+
+export function useChats(): readonly ChatMessage[] {
+  return useSyncExternalStore(rosterStore.subscribe, () => state.chats)
+}
+
+export function useChatNotice(): string | null {
+  return useSyncExternalStore(rosterStore.subscribe, () => state.chatNotice)
 }
 
 export function useRecentSolves(): readonly RecentSolve[] {
