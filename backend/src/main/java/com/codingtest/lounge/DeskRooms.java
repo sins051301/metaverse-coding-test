@@ -2,161 +2,350 @@ package com.codingtest.lounge;
 
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.UUID;
 
 /**
- * 열린 책상 방들. 방 id = 주인의 아바타 id. 서버 메모리에만 두고 문서 내용은 갖지 않는다 (주인 브라우저가 늘 최신 문서를 가짐).
+ * 열린 책상 방들. 서버 메모리에만 두고 문서 내용은 갖지 않는다 (주인 브라우저가 늘 최신 문서를 가짐).
  *
- * <p>방 하나에 주인 1명 + 관전자 여럿 + 그중 페어 상대 최대 1명. 글을 쓸 수 있는 사람은 주인과 페어 상대뿐이다.
+ * <p>방 id 는 방을 처음 열 때 만드는 무작위 값(d-xxxxxxxx)이고, 방이 닫히면 버린다. 그래서 예전 관전 링크는 다시 쓸 수 없다.
+ * 회원 주인은 연결이 바뀌어도(재연결, 새로고침) 같은 방을 이어 쓴다. 아바타 id 는 연결마다 새로 생기므로 주인은 회원 id 로 알아본다.
+ *
+ * <p>방 하나에 주인 1명 + 관전자 여럿 + 그중 페어 상대 최대 1명. 페어는 회원 주인과 회원 관전자 사이에서만 된다.
+ * 회원 주인·페어 상대의 연결이 끊기면 바로 정리하지 않고 "잠깐 자리 비움"으로 두었다가, 유예 시간 안에 돌아오지 않으면 정리한다 (expire...).
+ *
+ * <p>모든 메서드는 synchronized 다. 방 몇 개·몇 명 규모라 잠금 하나로 충분하고, 여러 칸(관전자·요청·상대)을 한 번에 바꿔도 어긋나지 않는다.
  */
 @Component
 class DeskRooms {
 
-	record Room(String ownerId, String ownerNickname, long problemId, String language, Set<String> spectators) {
-
-		Room withProblem(long problemId, String language) {
-			return new Room(ownerId, ownerNickname, problemId, language, spectators);
-		}
-
-	}
-
-	private final Map<String, Room> rooms = new ConcurrentHashMap<>();
-	// 방 id → 페어 상대. 상대는 관전자 중 한 명이고, 주인이 수락했을 때만 생긴다
-	private final Map<String, String> partners = new ConcurrentHashMap<>();
-	// 방 id → 페어를 요청하고 주인의 답을 기다리는 사람들
-	private final Map<String, Set<String>> pairRequests = new ConcurrentHashMap<>();
-
 	/**
-	 * 방을 연다. 이미 열려 있으면(문제·언어를 바꿈) 관전자와 페어 상대는 그대로 두고 문제만 바꾼다.
+	 * 바깥에 넘기는 방의 복사본.
 	 *
-	 * @return 다시 연 경우 그 방 (관전자에게 reset 을 보내야 함), 처음 연 경우 비어 있음
+	 * @param ownerAvatarId   주인의 지금 연결. 연결이 끊겨 돌아오길 기다리는 동안은 null
+	 * @param pairable        주인이 회원이라 페어가 되는 방인지
+	 * @param partnerAvatarId 페어 상대의 지금 연결. 상대가 없거나 돌아오길 기다리는 동안은 null
 	 */
-	Optional<Room> host(String ownerId, String ownerNickname, long problemId, String language) {
-		Room previous = rooms.get(ownerId);
-		if (previous == null) {
-			rooms.put(ownerId, new Room(ownerId, ownerNickname, problemId, language, ConcurrentHashMap.newKeySet()));
-			return Optional.empty();
-		}
-		Room reopened = previous.withProblem(problemId, language);
-		rooms.put(ownerId, reopened);
-		return Optional.of(reopened);
-	}
+	record Room(String id, String ownerAvatarId, String ownerNickname, boolean pairable, long problemId, String language,
+			Set<String> spectators, String partnerAvatarId, String partnerNickname) {
 
-	Optional<Room> join(String roomId, String spectatorId) {
-		Room room = rooms.get(roomId);
-		if (room == null || room.ownerId().equals(spectatorId)) {
-			return Optional.empty();
+		boolean ownerAway() {
+			return ownerAvatarId == null;
 		}
-		room.spectators().add(spectatorId);
-		return Optional.of(room);
+
+		// 메시지를 받을 사람 전부 (주인 + 관전자, 페어 상대도 관전자 명단에 들어 있다)
+		Set<String> members() {
+			Set<String> members = new LinkedHashSet<>(spectators);
+			if (ownerAvatarId != null) {
+				members.add(ownerAvatarId);
+			}
+			return members;
+		}
+
 	}
 
 	/**
-	 * @return 빠진 방. 빠진 사람이 페어 상대였으면 페어도 끝난다 (endedPair 로 확인)
+	 * @param reopened        이미 있던 방을 이어 연 경우 (문제·언어를 바꿈, 다시 연결함, 다른 탭에서 엶)
 	 */
-	Optional<Room> leave(String roomId, String spectatorId) {
-		Room room = rooms.get(roomId);
-		if (room == null || !room.spectators().remove(spectatorId)) {
-			return Optional.empty();
-		}
-		requestsOf(roomId).remove(spectatorId);
-		return Optional.of(room);
-	}
-
-	// 방 안의 모든 사람 (주인 + 관전자, 페어 상대도 관전자 명단에 들어 있다)
-	Set<String> members(Room room) {
-		Set<String> members = ConcurrentHashMap.newKeySet();
-		members.add(room.ownerId());
-		members.addAll(room.spectators());
-		return members;
-	}
-
-	// 문서를 바꿀 수 있는 사람(주인, 페어 상대)이 보낸 것만 통과. 관전자·방 밖 사람이 보낸 것은 비어 있음 (읽기 전용 강제)
-	Optional<Room> writableBy(String roomId, String senderId) {
-		Room room = rooms.get(roomId);
-		if (room == null) {
-			return Optional.empty();
-		}
-		boolean writer = room.ownerId().equals(senderId) || senderId.equals(partners.get(roomId));
-		return writer ? Optional.of(room) : Optional.empty();
-	}
-
-	Optional<Room> ownedBy(String roomId, String senderId) {
-		Room room = rooms.get(roomId);
-		return room != null && room.ownerId().equals(senderId) ? Optional.of(room) : Optional.empty();
-	}
-
-	Optional<String> partnerOf(String roomId) {
-		return Optional.ofNullable(partners.get(roomId));
-	}
-
-	// 관전 중인 사람만, 아직 페어 상대가 없는 방에만 요청할 수 있다
-	Optional<Room> requestPair(String roomId, String requesterId) {
-		Room room = rooms.get(roomId);
-		if (room == null || !room.spectators().contains(requesterId) || partners.containsKey(roomId)) {
-			return Optional.empty();
-		}
-		requestsOf(roomId).add(requesterId);
-		return Optional.of(room);
+	record Hosted(Room room, boolean reopened) {
 	}
 
 	/**
-	 * 주인이 수락. putIfAbsent 라서 두 요청을 거의 동시에 수락해도 상대는 한 명만 된다.
+	 * @param resumedPartner 페어 상대가 다시 들어와 페어를 이어 간다
+	 * @param replacedAvatarId 상대의 예전 연결 (다른 탭에서 들어왔거나 끊긴 줄 모르는 연결). 페어가 끝났다고 알린다
+	 */
+	record Joined(Room room, boolean resumedPartner, String replacedAvatarId) {
+	}
+
+	record Left(Room room, boolean endedPair) {
+	}
+
+	// 페어가 끝났을 때 알릴 두 연결. 자리를 비운 쪽은 null
+	record EndedPair(String ownerAvatarId, String partnerAvatarId) {
+	}
+
+	// 연결이 끊겨 돌아오길 기다리기 시작한 방. ticket 이 그대로일 때만 유예가 끝나 정리한다 (그사이 돌아왔다 다시 끊긴 경우 구분)
+	record Away(Room room, long ticket) {
+	}
+
+	record Disconnected(List<Room> closed, List<Away> ownersAway, List<Away> partnersAway, List<Room> left) {
+	}
+
+	private record Requester(long userId, String nickname) {
+	}
+
+	private static final class State {
+
+		final String id;
+		final String ownerKey;
+		final Long ownerUserId;
+		String ownerAvatarId;
+		String ownerNickname;
+		long problemId;
+		String language;
+		long ownerAwayTicket;
+		final Set<String> spectators = new LinkedHashSet<>();
+		final Map<String, Requester> pairRequests = new LinkedHashMap<>();
+		Long partnerUserId;
+		String partnerAvatarId;
+		String partnerNickname;
+		long partnerAwayTicket;
+
+		State(String id, LoungeIdentity owner) {
+			this.id = id;
+			this.ownerKey = ownerKey(owner);
+			this.ownerUserId = owner.userId();
+		}
+
+		boolean pairable() {
+			return ownerUserId != null;
+		}
+
+		void endPair() {
+			partnerUserId = null;
+			partnerAvatarId = null;
+			partnerNickname = null;
+			partnerAwayTicket = 0;
+		}
+
+		Room snapshot() {
+			return new Room(id, ownerAvatarId, ownerNickname, pairable(), problemId, language, Set.copyOf(spectators),
+					partnerAvatarId, partnerNickname);
+		}
+
+	}
+
+	private final Map<String, State> rooms = new HashMap<>();
+	private final Map<String, String> roomIdByOwnerKey = new HashMap<>();
+	private long lastTicket;
+
+	/**
+	 * 방을 연다. 같은 주인(회원이면 같은 회원 id)의 방이 이미 있으면 새로 만들지 않고 이 연결을 주인으로 삼아 이어 쓴다.
+	 * 페어 상대와 관전자는 그대로 두고, 답을 기다리던 페어 요청은 버린다.
+	 */
+	synchronized Hosted host(LoungeIdentity owner, String ownerNickname, long problemId, String language) {
+		State state = Optional.ofNullable(roomIdByOwnerKey.get(ownerKey(owner))).map(rooms::get).orElse(null);
+		boolean reopened = state != null;
+		if (state == null) {
+			state = new State("d-" + UUID.randomUUID().toString().substring(0, 8), owner);
+			rooms.put(state.id, state);
+			roomIdByOwnerKey.put(state.ownerKey, state.id);
+		}
+		state.ownerAvatarId = owner.avatarId();
+		state.ownerNickname = ownerNickname;
+		state.problemId = problemId;
+		state.language = language;
+		state.ownerAwayTicket = 0;
+		state.pairRequests.clear();
+		return new Hosted(state.snapshot(), reopened);
+	}
+
+	/**
+	 * @param target 방 id, 또는 주인의 아바타 id (라운지에서 책상 주인 고양이를 보고 들어올 때)
+	 */
+	synchronized Optional<Joined> join(String target, LoungeIdentity spectator) {
+		State state = find(target);
+		if (state == null || spectator.avatarId().equals(state.ownerAvatarId)) {
+			return Optional.empty();
+		}
+		state.spectators.add(spectator.avatarId());
+		boolean resumedPartner = spectator.member() && spectator.userId().equals(state.partnerUserId);
+		String replaced = null;
+		if (resumedPartner) {
+			replaced = state.partnerAvatarId;
+			if (replaced != null && !replaced.equals(spectator.avatarId())) {
+				state.spectators.remove(replaced);
+			} else {
+				replaced = null;
+			}
+			state.partnerAvatarId = spectator.avatarId();
+			state.partnerAwayTicket = 0;
+		}
+		return Optional.of(new Joined(state.snapshot(), resumedPartner, replaced));
+	}
+
+	// 관전 화면을 닫고 나감. 페어 상대였으면 기다리지 않고 페어를 끝낸다 (스스로 나간 것이므로)
+	synchronized Optional<Left> leave(String roomId, String spectatorId) {
+		State state = rooms.get(roomId);
+		if (state == null || !state.spectators.remove(spectatorId)) {
+			return Optional.empty();
+		}
+		state.pairRequests.remove(spectatorId);
+		boolean endedPair = spectatorId.equals(state.partnerAvatarId);
+		if (endedPair) {
+			state.endPair();
+		}
+		return Optional.of(new Left(state.snapshot(), endedPair));
+	}
+
+	// 문서를 바꿀 수 있는 사람(주인, 페어 상대)이 보낸 것만 통과. 주인이 자리를 비운 동안은 아무도 못 쓴다 (돌아온 주인의 문서가 덮어쓰므로)
+	synchronized Optional<Room> writableBy(String roomId, String senderId) {
+		State state = rooms.get(roomId);
+		if (state == null || state.ownerAvatarId == null) {
+			return Optional.empty();
+		}
+		boolean writer = senderId.equals(state.ownerAvatarId) || senderId.equals(state.partnerAvatarId);
+		return writer ? Optional.of(state.snapshot()) : Optional.empty();
+	}
+
+	synchronized Optional<Room> ownedBy(String roomId, String senderId) {
+		State state = rooms.get(roomId);
+		return state != null && senderId.equals(state.ownerAvatarId) ? Optional.of(state.snapshot()) : Optional.empty();
+	}
+
+	// 회원 주인의 방에서, 관전 중인 다른 회원만, 아직 페어 상대가 없을 때만 요청할 수 있다
+	synchronized Optional<Room> requestPair(String roomId, LoungeIdentity requester, String nickname) {
+		State state = rooms.get(roomId);
+		if (state == null || state.ownerAvatarId == null || !state.pairable() || !requester.member()
+				|| requester.userId().equals(state.ownerUserId) || !state.spectators.contains(requester.avatarId())
+				|| state.partnerUserId != null) {
+			return Optional.empty();
+		}
+		state.pairRequests.put(requester.avatarId(), new Requester(requester.userId(), nickname));
+		return Optional.of(state.snapshot());
+	}
+
+	/**
+	 * 주인이 수락. 상대가 이미 있으면 거절된다 (두 요청을 거의 동시에 수락해도 상대는 한 명).
 	 *
 	 * @return 상대가 됐으면 그 방. 요청한 적 없거나 이미 상대가 있으면 비어 있음
 	 */
-	Optional<Room> acceptPair(String ownerId, String requesterId) {
-		Room room = rooms.get(ownerId);
-		if (room == null || !requestsOf(ownerId).remove(requesterId) || !room.spectators().contains(requesterId)) {
+	synchronized Optional<Room> acceptPair(String ownerAvatarId, String requesterId) {
+		State state = findByOwnerAvatar(ownerAvatarId);
+		if (state == null) {
 			return Optional.empty();
 		}
-		return partners.putIfAbsent(ownerId, requesterId) == null ? Optional.of(room) : Optional.empty();
+		Requester requester = state.pairRequests.remove(requesterId);
+		if (requester == null || !state.spectators.contains(requesterId) || state.partnerUserId != null) {
+			return Optional.empty();
+		}
+		state.partnerUserId = requester.userId();
+		state.partnerAvatarId = requesterId;
+		state.partnerNickname = requester.nickname();
+		return Optional.of(state.snapshot());
 	}
 
-	boolean declinePair(String ownerId, String requesterId) {
-		return rooms.containsKey(ownerId) && requestsOf(ownerId).remove(requesterId);
+	// @return 거절한 요청이 있던 방
+	synchronized Optional<Room> declinePair(String ownerAvatarId, String requesterId) {
+		State state = findByOwnerAvatar(ownerAvatarId);
+		return state != null && state.pairRequests.remove(requesterId) != null ? Optional.of(state.snapshot()) : Optional.empty();
 	}
 
 	// 주인이나 상대가 페어를 끝낸다. 상대는 관전자로 남는다
-	Optional<String> endPair(String roomId, String actorId) {
-		Room room = rooms.get(roomId);
-		String partner = partners.get(roomId);
-		if (room == null || partner == null || !(room.ownerId().equals(actorId) || partner.equals(actorId))) {
+	synchronized Optional<EndedPair> endPair(String roomId, String actorId) {
+		State state = rooms.get(roomId);
+		if (state == null || state.partnerUserId == null
+				|| !(actorId.equals(state.ownerAvatarId) || actorId.equals(state.partnerAvatarId))) {
 			return Optional.empty();
 		}
-		return partners.remove(roomId, partner) ? Optional.of(partner) : Optional.empty();
+		EndedPair ended = new EndedPair(state.ownerAvatarId, state.partnerAvatarId);
+		state.endPair();
+		return Optional.of(ended);
 	}
 
-	// 페어 채팅을 보낼 수 있는 두 사람
-	Optional<Set<String>> pairOf(String roomId, String senderId) {
-		Room room = rooms.get(roomId);
-		String partner = partners.get(roomId);
-		if (room == null || partner == null || !(room.ownerId().equals(senderId) || partner.equals(senderId))) {
+	// 페어 채팅을 받을 연결들 (자리를 비운 쪽은 빠진다). 보낸 사람이 페어가 아니면 비어 있음
+	synchronized Optional<Set<String>> pairOf(String roomId, String senderId) {
+		State state = rooms.get(roomId);
+		if (state == null || state.partnerAvatarId == null || state.ownerAvatarId == null
+				|| !(senderId.equals(state.ownerAvatarId) || senderId.equals(state.partnerAvatarId))) {
 			return Optional.empty();
 		}
-		return Optional.of(Set.of(room.ownerId(), partner));
+		return Optional.of(Set.of(state.ownerAvatarId, state.partnerAvatarId));
 	}
 
-	Optional<Room> close(String ownerId) {
-		partners.remove(ownerId);
-		pairRequests.remove(ownerId);
-		return Optional.ofNullable(rooms.remove(ownerId));
+	// 주인이 풀이 화면을 닫음 (일어나기, 다른 화면으로 이동). 기다리지 않고 바로 닫는다
+	synchronized Optional<Room> close(String ownerAvatarId) {
+		State state = findByOwnerAvatar(ownerAvatarId);
+		return state == null ? Optional.empty() : Optional.of(remove(state));
 	}
 
-	// 연결이 끊긴 사람이 관전 중이던 방들에서 빠진다. 빠진 방들을 돌려줘 주인에게 관전자 수를 알린다
-	List<Room> leaveAll(String spectatorId) {
+	/**
+	 * 연결이 끊긴 사람을 정리한다.
+	 *
+	 * <ul>
+	 *   <li>게스트 주인의 방: 바로 닫는다 (다시 연결해도 같은 사람인지 알 수 없다. 코드는 브라우저 draft 에 남아 있다)</li>
+	 *   <li>회원 주인의 방: 자리 비움으로 두고 유예 후 expireOwner</li>
+	 *   <li>페어 상대: 관전자 명단에서 빼고 페어는 자리 비움으로 두고 유예 후 expirePartner</li>
+	 *   <li>그 밖의 관전자: 명단에서 뺀다 (주인에게 관전자 수를 알림)</li>
+	 * </ul>
+	 */
+	synchronized Disconnected disconnect(String avatarId) {
+		List<Room> closed = new ArrayList<>();
+		List<Away> ownersAway = new ArrayList<>();
+		List<Away> partnersAway = new ArrayList<>();
+		List<Room> left = new ArrayList<>();
+		for (State state : List.copyOf(rooms.values())) {
+			if (avatarId.equals(state.ownerAvatarId)) {
+				if (state.pairable()) {
+					state.ownerAvatarId = null;
+					state.ownerAwayTicket = ++lastTicket;
+					state.pairRequests.clear();
+					ownersAway.add(new Away(state.snapshot(), state.ownerAwayTicket));
+				} else {
+					closed.add(remove(state));
+				}
+			} else if (state.spectators.remove(avatarId)) {
+				state.pairRequests.remove(avatarId);
+				if (avatarId.equals(state.partnerAvatarId)) {
+					state.partnerAvatarId = null;
+					state.partnerAwayTicket = ++lastTicket;
+					partnersAway.add(new Away(state.snapshot(), state.partnerAwayTicket));
+				} else {
+					left.add(state.snapshot());
+				}
+			}
+		}
+		return new Disconnected(closed, ownersAway, partnersAway, left);
+	}
+
+	// 유예가 끝났는데 주인이 돌아오지 않았으면 방을 닫는다
+	synchronized Optional<Room> expireOwner(String roomId, long ticket) {
+		State state = rooms.get(roomId);
+		if (state == null || state.ownerAvatarId != null || state.ownerAwayTicket != ticket) {
+			return Optional.empty();
+		}
+		return Optional.of(remove(state));
+	}
+
+	// 유예가 끝났는데 상대가 돌아오지 않았으면 페어를 끝낸다
+	synchronized Optional<Room> expirePartner(String roomId, long ticket) {
+		State state = rooms.get(roomId);
+		if (state == null || state.partnerUserId == null || state.partnerAvatarId != null
+				|| state.partnerAwayTicket != ticket) {
+			return Optional.empty();
+		}
+		state.endPair();
+		return Optional.of(state.snapshot());
+	}
+
+	private State find(String target) {
+		State state = rooms.get(target);
+		return state != null ? state : findByOwnerAvatar(target);
+	}
+
+	private State findByOwnerAvatar(String ownerAvatarId) {
 		return rooms.values().stream()
-				.filter(room -> room.spectators().remove(spectatorId))
-				.peek(room -> requestsOf(room.ownerId()).remove(spectatorId))
-				.toList();
+				.filter(state -> ownerAvatarId.equals(state.ownerAvatarId))
+				.findFirst()
+				.orElse(null);
 	}
 
-	private Set<String> requestsOf(String roomId) {
-		return pairRequests.computeIfAbsent(roomId, key -> ConcurrentHashMap.newKeySet());
+	private Room remove(State state) {
+		rooms.remove(state.id);
+		roomIdByOwnerKey.remove(state.ownerKey, state.id);
+		return state.snapshot();
+	}
+
+	// 같은 주인인지 가리는 열쇠. 회원은 회원 id(연결이 바뀌어도 같음), 게스트는 연결마다 다른 아바타 id
+	private static String ownerKey(LoungeIdentity owner) {
+		return owner.member() ? "u-" + owner.userId() : owner.avatarId();
 	}
 
 }

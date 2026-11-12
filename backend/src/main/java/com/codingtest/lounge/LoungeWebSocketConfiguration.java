@@ -84,4 +84,13 @@ public class LoungeWebSocketConfiguration implements WebSocketMessageBrokerConfi
 		return scheduler;
 	}
 
+	// 연결이 끊긴 책상 주인·페어 상대를 기다리는 유예 시간이 끝나면 정리하는 시계 (DeskController)
+	@Bean
+	ThreadPoolTaskScheduler deskGraceScheduler() {
+		ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+		scheduler.setPoolSize(1);
+		scheduler.setThreadNamePrefix("desk-grace-");
+		return scheduler;
+	}
+
 }
