@@ -44,7 +44,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 실제 서버(무작위 포트)에 STOMP 클라이언트를 여러 개 붙여, 브라우저 여러 개가 라운지에 들어온 상황을 만든다.
  */
 @Tag("docker")
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+// 유예 시간을 줄여 "돌아오지 않음"을 빨리 확인한다 (실제 값은 application.properties)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "lounge.desk.reconnect-grace=2s")
 @Import(TestcontainersConfiguration.class)
 class LoungeWebSocketTest {
 
@@ -178,11 +179,12 @@ class LoungeWebSocketTest {
 	}
 
 	@Test
-	@DisplayName("관전: 방에 들어오면 방 정보를 받고, 주인이 보낸 문서 전체·변경이 관전자에게만 간다. 큰 코드(200KB)도 한 번에 간다")
+	@DisplayName("관전: 주인 고양이의 아바타 id 로 들어와도 실제 방 id(무작위)를 받고, 주인이 보낸 문서 전체·변경이 관전자에게만 간다. 큰 코드(200KB)도 한 번에 간다")
 	void relaysOwnerDocumentToSpectators() throws Exception {
 		LoungeClient owner = connect(null);
 		String ownerId = owner.join(100, 120, 7);
-		owner.send("/app/desk/host", Map.of("problemId", 1, "language", "JAVA"));
+		String roomId = owner.host();
+		assertThat(roomId).startsWith("d-").isNotEqualTo(ownerId);
 		LoungeClient spectator = connect(null);
 		String spectatorId = spectator.join(160, 130, null);
 		LoungeClient outsider = connect(null);
@@ -190,98 +192,194 @@ class LoungeWebSocketTest {
 
 		spectator.send("/app/desk/" + ownerId + "/join", Map.of());
 		JsonNode opened = spectator.awaitDesk("opened");
+		assertThat(opened.path("roomId").asString()).isEqualTo(roomId);
+		assertThat(opened.path("target").asString()).isEqualTo(ownerId);
 		assertThat(opened.path("problemId").asLong()).isEqualTo(1);
 		assertThat(opened.path("language").asString()).isEqualTo("JAVA");
+		assertThat(opened.path("pairable").asBoolean()).isFalse();
 		assertThat(owner.awaitDesk("member-joined").path("memberId").asString()).isEqualTo(spectatorId);
 		assertThat(owner.awaitDesk("spectators").path("spectatorCount").asInt()).isEqualTo(1);
 
 		String bigDocument = "A".repeat(200_000);
-		owner.send("/app/desk/" + ownerId + "/full", Map.of("to", spectatorId, "kind", "doc", "payload", bigDocument));
+		owner.send("/app/desk/" + roomId + "/full", Map.of("to", spectatorId, "kind", "doc", "payload", bigDocument));
 		assertThat(spectator.awaitDesk("full").path("payload").asString()).hasSize(200_000);
 
-		owner.send("/app/desk/" + ownerId + "/update", Map.of("kind", "doc", "payload", "AQID"));
+		owner.send("/app/desk/" + roomId + "/update", Map.of("kind", "doc", "payload", "AQID"));
 		assertThat(spectator.awaitDesk("update").path("payload").asString()).isEqualTo("AQID");
 		outsider.assertNoDesk("update");
 	}
 
 	@Test
-	@DisplayName("관전자가 보낸 문서 변경은 서버가 버린다 (읽기 전용 강제). 주인이 나가면 관전자에게 closed, 없는 방은 not-found")
+	@DisplayName("관전자가 보낸 문서 변경은 서버가 버린다 (읽기 전용 강제). 게스트 주인의 연결이 끊기면 기다리지 않고 closed, 닫힌 방은 not-found")
 	void enforcesReadOnlyAndClosesRoom() throws Exception {
 		LoungeClient owner = connect(null);
-		String ownerId = owner.join(100, 120, 7);
-		owner.send("/app/desk/host", Map.of("problemId", 1, "language", "JAVA"));
+		owner.join(100, 120, 7);
+		String roomId = owner.host();
 		LoungeClient spectator = connect(null);
 		spectator.join(160, 130, null);
 		LoungeClient another = connect(null);
 		another.join(200, 150, null);
-		spectator.send("/app/desk/" + ownerId + "/join", Map.of());
-		another.send("/app/desk/" + ownerId + "/join", Map.of());
+		spectator.send("/app/desk/" + roomId + "/join", Map.of());
+		another.send("/app/desk/" + roomId + "/join", Map.of());
 		spectator.awaitDesk("opened");
 		another.awaitDesk("opened");
 
-		spectator.send("/app/desk/" + ownerId + "/update", Map.of("kind", "doc", "payload", "AQID"));
+		spectator.send("/app/desk/" + roomId + "/update", Map.of("kind", "doc", "payload", "AQID"));
 		another.assertNoDesk("update");
 
 		owner.disconnect();
 		spectator.awaitDesk("closed");
-		spectator.send("/app/desk/" + ownerId + "/join", Map.of());
+		spectator.send("/app/desk/" + roomId + "/join", Map.of());
 		spectator.awaitDesk("not-found");
 	}
 
 	@Test
-	@DisplayName("페어: 로그인한 관전자의 요청을 주인이 수락하면, 상대의 변경이 주인·다른 관전자에게 가고 1:1 채팅은 두 사람만 받는다")
+	@DisplayName("페어: 로그인한 관전자의 요청을 회원 주인이 수락하면, 상대의 변경이 주인·다른 관전자에게 가고 1:1 채팅은 두 사람만 받는다")
 	void pairPartnerCanWriteAndChat() throws Exception {
-		LoungeClient owner = connect(null);
-		String ownerId = owner.join(100, 120, 7);
-		owner.send("/app/desk/host", Map.of("problemId", 1, "language", "JAVA"));
-		User user = userService.findOrCreate("pair-test-" + UUID.randomUUID(), "pair@example.com");
-		LoungeClient partner = connect("accessToken=" + tokenService.issue(user.getId()));
+		LoungeClient owner = connectMember("pair-owner");
+		owner.join(100, 120, 7);
+		String roomId = owner.host();
+		User user = newUser("pair-partner");
+		LoungeClient partner = connect(cookieOf(user));
 		String partnerId = partner.join(160, 130, null);
 		LoungeClient spectator = connect(null);
 		spectator.join(200, 150, null);
-		partner.send("/app/desk/" + ownerId + "/join", Map.of());
-		spectator.send("/app/desk/" + ownerId + "/join", Map.of());
-		partner.awaitDesk("opened");
+		partner.send("/app/desk/" + roomId + "/join", Map.of());
+		spectator.send("/app/desk/" + roomId + "/join", Map.of());
+		assertThat(partner.awaitDesk("opened").path("pairable").asBoolean()).isTrue();
 		spectator.awaitDesk("opened");
 
-		partner.send("/app/desk/" + ownerId + "/update", Map.of("kind", "doc", "payload", "AQID"));
+		partner.send("/app/desk/" + roomId + "/update", Map.of("kind", "doc", "payload", "AQID"));
 		owner.assertNoDesk("update");
 
-		partner.send("/app/desk/" + ownerId + "/pair-request", Map.of());
+		partner.send("/app/desk/" + roomId + "/pair-request", Map.of());
 		JsonNode requested = owner.awaitDesk("pair-requested");
 		assertThat(requested.path("memberId").asString()).isEqualTo(partnerId);
 		assertThat(requested.path("nickname").asString()).isEqualTo(user.getNickname());
 		owner.send("/app/desk/pair-accept", Map.of("memberId", partnerId));
 		partner.awaitDesk("pair-started");
-		owner.awaitDesk("pair-started");
+		assertThat(owner.awaitDesk("pair-started").path("nickname").asString()).isEqualTo(user.getNickname());
 
-		partner.send("/app/desk/" + ownerId + "/update", Map.of("kind", "doc", "payload", "BAUG"));
+		partner.send("/app/desk/" + roomId + "/update", Map.of("kind", "doc", "payload", "BAUG"));
 		assertThat(owner.awaitDesk("update").path("payload").asString()).isEqualTo("BAUG");
 		assertThat(spectator.awaitDesk("update").path("payload").asString()).isEqualTo("BAUG");
 
-		partner.send("/app/desk/" + ownerId + "/chat", Map.of("text", "5번째 줄 봐 주세요"));
+		partner.send("/app/desk/" + roomId + "/chat", Map.of("text", "5번째 줄 봐 주세요"));
 		assertThat(owner.awaitDesk("chat").path("text").asString()).isEqualTo("5번째 줄 봐 주세요");
 		spectator.assertNoDesk("chat");
 
-		owner.send("/app/desk/" + ownerId + "/pair-end", Map.of());
+		owner.send("/app/desk/" + roomId + "/pair-end", Map.of());
 		partner.awaitDesk("pair-ended");
-		partner.send("/app/desk/" + ownerId + "/update", Map.of("kind", "doc", "payload", "BwgJ"));
+		partner.send("/app/desk/" + roomId + "/update", Map.of("kind", "doc", "payload", "BwgJ"));
 		spectator.assertNoDesk("update");
 	}
 
 	@Test
-	@DisplayName("페어 요청은 로그인한 사람만 보낼 수 있다 (게스트 요청은 주인에게 가지 않는다)")
-	void guestCannotRequestPair() throws Exception {
-		LoungeClient owner = connect(null);
-		String ownerId = owner.join(100, 120, 7);
-		owner.send("/app/desk/host", Map.of("problemId", 1, "language", "JAVA"));
+	@DisplayName("페어는 회원끼리만: 게스트의 요청도, 게스트 주인의 방에 보낸 회원의 요청도 주인에게 가지 않는다")
+	void pairNeedsMembersOnBothSides() throws Exception {
+		LoungeClient memberOwner = connectMember("pair-member-owner");
+		memberOwner.join(100, 120, 7);
+		String memberRoom = memberOwner.host();
 		LoungeClient guest = connect(null);
 		guest.join(160, 130, null);
-		guest.send("/app/desk/" + ownerId + "/join", Map.of());
+		guest.send("/app/desk/" + memberRoom + "/join", Map.of());
 		guest.awaitDesk("opened");
+		guest.send("/app/desk/" + memberRoom + "/pair-request", Map.of());
+		memberOwner.assertNoDesk("pair-requested");
 
-		guest.send("/app/desk/" + ownerId + "/pair-request", Map.of());
-		owner.assertNoDesk("pair-requested");
+		LoungeClient guestOwner = connect(null);
+		guestOwner.join(200, 150, 8);
+		String guestRoom = guestOwner.host();
+		LoungeClient member = connectMember("pair-member-spectator");
+		member.join(220, 150, null);
+		member.send("/app/desk/" + guestRoom + "/join", Map.of());
+		assertThat(member.awaitDesk("opened").path("pairable").asBoolean()).isFalse();
+		member.send("/app/desk/" + guestRoom + "/pair-request", Map.of());
+		guestOwner.assertNoDesk("pair-requested");
+	}
+
+	@Test
+	@DisplayName("회원 주인이 끊겼다가 유예 안에 다시 연결되면 같은 방 id 로 이어 열고, 관전자는 새 문서를 받는다. 그동안 페어 상대는 글을 못 쓴다")
+	void memberOwnerResumesWithinGrace() throws Exception {
+		User ownerUser = newUser("resume-owner");
+		LoungeClient owner = connect(cookieOf(ownerUser));
+		owner.join(100, 120, 7);
+		String roomId = owner.host();
+		LoungeClient partner = connectMember("resume-owner-partner");
+		String partnerId = partner.join(160, 130, null);
+		partner.send("/app/desk/" + roomId + "/join", Map.of());
+		partner.awaitDesk("opened");
+		pair(owner, partner, roomId, partnerId);
+
+		owner.disconnect();
+		partner.awaitDesk("owner-away");
+		LoungeClient spectator = connect(null);
+		spectator.join(200, 150, null);
+		spectator.send("/app/desk/" + roomId + "/join", Map.of());
+		spectator.awaitDesk("opened");
+		spectator.awaitDesk("owner-away");
+		partner.send("/app/desk/" + roomId + "/update", Map.of("kind", "doc", "payload", "AQID"));
+		spectator.assertNoDesk("update");
+
+		LoungeClient returned = connect(cookieOf(ownerUser));
+		returned.join(100, 120, 7);
+		assertThat(returned.host()).isEqualTo(roomId);
+		partner.awaitDesk("reset");
+		spectator.awaitDesk("reset");
+		assertThat(returned.awaitDesk("pair-started").path("memberId").asString()).isEqualTo(partnerId);
+		partner.send("/app/desk/" + roomId + "/update", Map.of("kind", "doc", "payload", "BAUG"));
+		assertThat(returned.awaitDesk("update").path("payload").asString()).isEqualTo("BAUG");
+	}
+
+	@Test
+	@DisplayName("페어 상대가 끊겼다가 유예 안에 새 연결로 다시 들어오면 페어가 이어지고 다시 쓸 수 있다")
+	void partnerResumesWithinGrace() throws Exception {
+		LoungeClient owner = connectMember("resume-partner-owner");
+		owner.join(100, 120, 7);
+		String roomId = owner.host();
+		User partnerUser = newUser("resume-partner");
+		LoungeClient partner = connect(cookieOf(partnerUser));
+		String partnerId = partner.join(160, 130, null);
+		partner.send("/app/desk/" + roomId + "/join", Map.of());
+		partner.awaitDesk("opened");
+		pair(owner, partner, roomId, partnerId);
+
+		partner.disconnect();
+		owner.awaitDesk("pair-away");
+
+		LoungeClient returned = connect(cookieOf(partnerUser));
+		String returnedId = returned.join(160, 130, null);
+		returned.send("/app/desk/" + roomId + "/join", Map.of());
+		returned.awaitDesk("opened");
+		returned.awaitDesk("pair-started");
+		assertThat(owner.awaitDesk("pair-started").path("memberId").asString()).isEqualTo(returnedId);
+		returned.send("/app/desk/" + roomId + "/update", Map.of("kind", "doc", "payload", "BAUG"));
+		assertThat(owner.awaitDesk("update").path("payload").asString()).isEqualTo("BAUG");
+	}
+
+	@Test
+	@DisplayName("유예 안에 돌아오지 않으면 페어 상대는 페어가 끝나고, 회원 주인의 방은 닫힌다")
+	void graceExpires() throws Exception {
+		LoungeClient owner = connectMember("expire-owner");
+		owner.join(100, 120, 7);
+		String roomId = owner.host();
+		LoungeClient partner = connectMember("expire-partner");
+		String partnerId = partner.join(160, 130, null);
+		partner.send("/app/desk/" + roomId + "/join", Map.of());
+		partner.awaitDesk("opened");
+		pair(owner, partner, roomId, partnerId);
+		LoungeClient spectator = connect(null);
+		spectator.join(200, 150, null);
+		spectator.send("/app/desk/" + roomId + "/join", Map.of());
+		spectator.awaitDesk("opened");
+
+		partner.disconnect();
+		owner.awaitDesk("pair-away");
+		owner.awaitDesk("pair-ended");
+
+		owner.disconnect();
+		spectator.awaitDesk("owner-away");
+		spectator.awaitDesk("closed");
 	}
 
 	@Test
@@ -314,6 +412,26 @@ class LoungeWebSocketTest {
 	@DisplayName("허용한 프론트 주소가 아닌 다른 사이트(Origin)에서는 연결할 수 없다")
 	void rejectsOtherOrigins() {
 		assertThatThrownBy(() -> connect(null, "http://evil.example")).isInstanceOf(Exception.class);
+	}
+
+	private User newUser(String prefix) {
+		return userService.findOrCreate(prefix + "-" + UUID.randomUUID(), prefix + "@example.com");
+	}
+
+	private String cookieOf(User user) {
+		return "accessToken=" + tokenService.issue(user.getId());
+	}
+
+	private LoungeClient connectMember(String prefix) throws Exception {
+		return connect(cookieOf(newUser(prefix)));
+	}
+
+	private static void pair(LoungeClient owner, LoungeClient partner, String roomId, String partnerId) throws InterruptedException {
+		partner.send("/app/desk/" + roomId + "/pair-request", Map.of());
+		owner.awaitDesk("pair-requested");
+		owner.send("/app/desk/pair-accept", Map.of("memberId", partnerId));
+		partner.awaitDesk("pair-started");
+		owner.awaitDesk("pair-started");
 	}
 
 	private LoungeClient connect(String cookie) throws Exception {
@@ -365,6 +483,12 @@ class LoungeWebSocketTest {
 			request.put("deskId", deskId);
 			send("/app/lounge/join", request);
 			return awaitSnapshot().path("myAvatarId").asString();
+		}
+
+		// 풀이 화면을 연 것처럼 방을 열고, 서버가 정한 방 id 를 돌려준다
+		String host() throws InterruptedException {
+			send("/app/desk/host", Map.of("problemId", 1, "language", "JAVA"));
+			return awaitDesk("hosted").path("roomId").asString();
 		}
 
 		JsonNode awaitSnapshot() throws InterruptedException {
