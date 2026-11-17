@@ -5,6 +5,7 @@ import {
   PROBLEM_LIST_PATH,
   SPECTATE_PATH,
 } from '@/app/layouts/LoungeLayout'
+import { announceAuthChange } from '@/features/auth/model/authSync'
 import { takeLoginReturnPath } from '@/features/auth/model/login'
 import { ProblemListPage } from '@/pages/problem-list/ui/ProblemListPage'
 import { SolvePage } from '@/pages/solve/ui/SolvePage'
@@ -23,6 +24,9 @@ export const router = createBrowserRouter([
   },
   {
     path: '/login/callback',
-    loader: () => redirect(takeLoginReturnPath() ?? LOUNGE_PATH),
+    loader: () => {
+      announceAuthChange()
+      return redirect(takeLoginReturnPath() ?? LOUNGE_PATH)
+    },
   },
 ])
