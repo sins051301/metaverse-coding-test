@@ -1,0 +1,25 @@
+# 도메인 하나로 프론트와 백엔드를 함께 연다 (같은 출처라 SameSite=Lax 로그인 쿠키·WebSocket 이 그대로 동작한다).
+# SITE_ADDRESS 가 도메인(예: mogakco.example.com)이면 Caddy 가 Let's Encrypt 인증서를 자동으로 받고 80→443 으로 넘긴다.
+# 로컬 점검은 SITE_ADDRESS=:80 으로 HTTP 만 연다.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# 백엔드가 받는 경로. /login/callback 은 프론트 화면이라 /login/oauth2/* 만 넘긴다
+	@backend path /api/* /ws /ws/* /oauth2/* /login/oauth2/*
+	handle @backend {
+		reverse_proxy backend:8080
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
