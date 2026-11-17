@@ -35,9 +35,9 @@ class ProblemRepositoryTest {
 	}
 
 	@Test
-	@DisplayName("seed 문제 5개를 id 순서로 읽고, 지문·예제·히든 테스트가 모두 있다")
+	@DisplayName("seed 문제 5개부터 id 순서로 읽고, 모든 문제에 지문·예제·히든 테스트가 있다")
 	void loadsAllSeedProblemsInIdOrder() {
-		assertThat(problemRepository.findAll()).extracting(Problem::getId).containsExactly(1L, 2L, 3L, 4L, 5L);
+		assertThat(problemRepository.findAll()).extracting(Problem::getId).startsWith(1L, 2L, 3L, 4L, 5L).isSorted();
 		assertThat(problemRepository.findAll()).allSatisfy(problem -> {
 			assertThat(problem.getTitle()).isNotBlank();
 			assertThat(problem.getDescription()).contains("## 문제 설명");

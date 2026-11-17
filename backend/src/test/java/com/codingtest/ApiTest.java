@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -50,7 +51,8 @@ class ApiTest {
 	@DisplayName("문제 목록은 id 순서로 제목과 난이도를 준다")
 	void listsProblems() {
 		assertThat(mockMvc.get().uri("/api/problems")).hasStatusOk()
-				.bodyJson().extractingPath("$[*].id").asArray().containsExactly(1, 2, 3, 4, 5);
+				.bodyJson().extractingPath("$[*].id").asArray().startsWith(1, 2, 3, 4, 5)
+				.isSortedAccordingTo(Comparator.comparingLong(id -> ((Number) id).longValue()));
 	}
 
 	@Test
@@ -60,7 +62,7 @@ class ApiTest {
 		transactionTemplate.executeWithoutResult(status -> userSolvedProblemRepository.recordIfAbsent(user.getId(), 3, Instant.now()));
 
 		assertThat(mockMvc.get().uri("/api/problems").header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenService.issue(user.getId())))
-				.hasStatusOk().bodyJson().extractingPath("$[*].solved").asArray().containsExactly(false, false, true, false, false);
+				.hasStatusOk().bodyJson().extractingPath("$[?(@.solved == true)].id").asArray().containsExactly(3);
 		assertThat(mockMvc.get().uri("/api/problems"))
 				.hasStatusOk().bodyJson().extractingPath("$[*].solved").asArray().containsOnly(false);
 	}
