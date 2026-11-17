@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>문제 파이프라인</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="top-bar">
+      <h1>문제 파이프라인</h1>
+      <form id="crawl-form" class="crawl-form">
+        <input id="crawl-input" name="lessons" placeholder="프로그래머스 문제 번호·URL 또는 코드트리 기출 문제 URL (쉼표·공백으로 여러 개)" autocomplete="off" />
+        <button type="submit">수집 + 변형</button>
+      </form>
+      <button id="publish-button" class="publish-button" type="button" disabled>SQL 생성</button>
+    </header>
+    <div class="layout">
+      <aside class="sidebar">
+        <ul id="draft-list" class="draft-list"></ul>
+        <p id="empty-list" class="muted">아직 문제가 없습니다. 위에 문제 번호를 넣어 수집하세요.</p>
+      </aside>
+      <main id="detail" class="detail">
+        <p class="muted">왼쪽에서 문제를 고르세요.</p>
+      </main>
+    </div>
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
