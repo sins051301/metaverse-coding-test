@@ -26,6 +26,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -77,6 +78,7 @@ public class SandboxRunner {
 	private Path writeInputDirectory(Language language, String sourceCode, List<String> inputs) {
 		try {
 			Path directory = Files.createTempDirectory("judge-");
+			allowSandboxUserToRead(directory);
 			Files.writeString(directory.resolve(language.sourceFileName()), sourceCode);
 			Path testsDirectory = Files.createDirectory(directory.resolve("tests"));
 			for (int index = 0; index < inputs.size(); index++) {
@@ -85,6 +87,15 @@ public class SandboxRunner {
 			return directory;
 		} catch (IOException exception) {
 			throw new UncheckedIOException(exception);
+		}
+	}
+
+	// 채점 컨테이너의 runner.sh 는 입력을 sandbox 유저(uid 1001)로 읽는다. 리눅스에서 createTempDirectory 는 폴더를 700(만든 사람만 접근)으로
+	// 만들어 sandbox 유저가 들어갈 수 없다. 권한을 무시하는 Docker Desktop(윈도우·맥)에서는 드러나지 않고 리눅스 서버에서만 실패한다.
+	// 입력은 제출 코드와 테스트 입력뿐이고, 폴더는 채점이 끝나면 지운다.
+	private static void allowSandboxUserToRead(Path directory) throws IOException {
+		if (directory.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+			Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwxr-xr-x"));
 		}
 	}
 
