@@ -20,10 +20,25 @@ export function LoungeChat({ variant }: LoungeChatProps) {
   const [draft, setDraft] = useState('')
   const logRef = useRef<HTMLOListElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const sectionRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
   }, [chats])
+
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      const input = inputRef.current
+      if (
+        input === document.activeElement &&
+        !sectionRef.current?.contains(event.target as Node)
+      ) {
+        input?.blur()
+      }
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    return () => window.removeEventListener('pointerdown', onPointerDown, true)
+  }, [])
 
   useEffect(() => {
     if (variant !== 'overlay') return
@@ -51,6 +66,7 @@ export function LoungeChat({ variant }: LoungeChatProps) {
 
   return (
     <section
+      ref={sectionRef}
       className={variant === 'overlay' ? styles.overlay : styles.panel}
       aria-label="라운지 채팅"
     >
