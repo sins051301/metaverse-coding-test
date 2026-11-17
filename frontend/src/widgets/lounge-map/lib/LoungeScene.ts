@@ -229,7 +229,6 @@ export class LoungeScene extends Phaser.Scene {
       this,
       this.appearance.coat,
       '나',
-      true,
       spawn.x,
       spawn.y,
     )

@@ -45,6 +45,18 @@ export function drawZ(context: CanvasRenderingContext2D, colorOf: ColorOf) {
   context.fillRect(0, 2, 3, 1)
 }
 
+export const SPEECH_TAIL_WIDTH = 4
+export const SPEECH_TAIL_HEIGHT = 2
+
+export function drawSpeechTail(
+  context: CanvasRenderingContext2D,
+  colorOf: ColorOf,
+) {
+  context.fillStyle = colorOf(vars.map.frame)
+  context.fillRect(0, 0, 4, 1)
+  context.fillRect(1, 1, 2, 1)
+}
+
 export const STAR_WIDTH = 8
 export const STAR_HEIGHT = 4
 

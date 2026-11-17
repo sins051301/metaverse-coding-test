@@ -79,7 +79,6 @@ export class RemoteCats {
       this.scene,
       avatar.coat,
       avatar.nickname,
-      false,
       avatar.x,
       avatar.y,
     )

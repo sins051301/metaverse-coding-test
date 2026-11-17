@@ -19,8 +19,11 @@ import {
   drawSolved,
   drawStar,
   drawZ,
+  drawSpeechTail,
   SOLVED_HEIGHT,
   SOLVED_WIDTH,
+  SPEECH_TAIL_HEIGHT,
+  SPEECH_TAIL_WIDTH,
   STAR_HEIGHT,
   STAR_WIDTH,
   Z_SIZE,
@@ -84,9 +87,11 @@ export type CatView = {
   star: Phaser.GameObjects.Image
   solved: Phaser.GameObjects.Image
   speech: Phaser.GameObjects.Text
+  speechTail: Phaser.GameObjects.Image
 }
 
 const EFFECT = {
+  speechTail: 'fx-speech-tail',
   bubble: (dotIndex: number) => `fx-bubble-${dotIndex}`,
   failure: 'fx-failure',
   z: 'fx-z',
@@ -123,6 +128,9 @@ function ensureEffectTextures(scene: Phaser.Scene) {
   canvas(EFFECT.solved, SOLVED_WIDTH, SOLVED_HEIGHT, (context) =>
     drawSolved(context, tokenColor),
   )
+  canvas(EFFECT.speechTail, SPEECH_TAIL_WIDTH, SPEECH_TAIL_HEIGHT, (context) =>
+    drawSpeechTail(context, tokenColor),
+  )
 }
 
 const HEAD_TOP = -(FRAME_SIZE - 4)
@@ -130,14 +138,13 @@ const NAME_TAG_Y = -FRAME_SIZE + 2 - NAME_TAG_GAP
 const BUBBLE_POSITION = { x: -16, y: HEAD_TOP }
 const Z_POSITION = { x: 5, y: HEAD_TOP + 1 }
 const STAR_BOTTOM = NAME_TAG_Y - 10
-const SPEECH_WRAP_WIDTH = 90
+const SPEECH_WRAP_WIDTH = 52
 export const SPEECH_SHOW_MS = 4_000
 
 export function createCatView(
   scene: Phaser.Scene,
   coat: Coat,
   name: string,
-  mine: boolean,
   x: number,
   y: number,
 ): CatView {
@@ -148,11 +155,10 @@ export function createCatView(
   const nameTag = scene.add
     .text(0, NAME_TAG_Y, name, {
       fontFamily: 'Jua, sans-serif',
-      fontSize: '7px',
-      color: tokenColor(mine ? vars.color.accentInk : vars.color.tagInk),
-      backgroundColor: tokenColor(mine ? vars.color.accent : vars.color.tag),
-      padding: { x: 2, y: 0 },
+      fontSize: '5px',
+      color: tokenColor(vars.color.tag),
     })
+    .setShadow(0, 1, tokenColor(vars.color.tagInk), 0)
     .setOrigin(0.5, 1)
   const bubble = scene.add
     .image(BUBBLE_POSITION.x, BUBBLE_POSITION.y, EFFECT.bubble(0))
@@ -170,22 +176,45 @@ export function createCatView(
     .image(0, NAME_TAG_Y + 2, EFFECT.solved)
     .setOrigin(0.5, 1)
     .setVisible(false)
+  const speechTail = scene.add
+    .image(0, STAR_BOTTOM, EFFECT.speechTail)
+    .setOrigin(0.5, 1)
+    .setVisible(false)
   const speech = scene.add
-    .text(0, STAR_BOTTOM, '', {
+    .text(0, STAR_BOTTOM - SPEECH_TAIL_HEIGHT, '', {
       fontFamily: 'Jua, sans-serif',
-      fontSize: '7px',
+      fontSize: '5px',
       color: tokenColor(vars.color.tagInk),
       backgroundColor: tokenColor(vars.map.frame),
-      padding: { x: 3, y: 1 },
+      padding: { x: 2, y: 1 },
       wordWrap: { width: SPEECH_WRAP_WIDTH, useAdvancedWrap: true },
       align: 'center',
     })
     .setOrigin(0.5, 1)
     .setVisible(false)
   const container = scene.add
-    .container(x, y, [sprite, nameTag, bubble, z, star, solved, speech])
+    .container(x, y, [
+      sprite,
+      nameTag,
+      bubble,
+      z,
+      star,
+      solved,
+      speechTail,
+      speech,
+    ])
     .setDepth(y)
-  return { container, sprite, nameTag, bubble, z, star, solved, speech }
+  return {
+    container,
+    sprite,
+    nameTag,
+    bubble,
+    z,
+    star,
+    solved,
+    speech,
+    speechTail,
+  }
 }
 
 const EFFECT_STEP_MS = 450
@@ -233,7 +262,9 @@ export function applyCatLook(view: CatView, look: CatLook, time: number) {
     view.speech.setText(look.speech)
   }
   view.speech.setVisible(look.speech !== null)
-  const starLift = look.speech === null ? 0 : view.speech.height + 1
+  view.speechTail.setVisible(look.speech !== null)
+  const starLift =
+    look.speech === null ? 0 : view.speech.height + SPEECH_TAIL_HEIGHT + 1
   view.star
     .setVisible(!look.mine && look.solved)
     .setY(STAR_BOTTOM - starLift - (step % 2))
