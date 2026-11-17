@@ -71,6 +71,10 @@ tasks.withType<Test> {
 	environment("GOOGLE_CLIENT_ID", "test-client-id")
 	environment("GOOGLE_CLIENT_SECRET", "test-client-secret")
 	environment("JWT_SECRET", "test-jwt-secret-that-is-at-least-32-bytes-long")
+	// CI 로그만 보고 실패 원인을 알 수 있게 예외 메시지와 원인(Caused by)을 끝까지 출력한다
+	testLogging {
+		exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+	}
 }
 
 tasks.test {
