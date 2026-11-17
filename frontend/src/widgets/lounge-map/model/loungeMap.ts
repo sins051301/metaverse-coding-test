@@ -29,8 +29,8 @@ export const DESKS: Desk[] = DESK_ROWS.flatMap((y, rowIndex) =>
   })),
 )
 
-export function deskFrontSpot(desk: Desk) {
-  return { x: desk.x + DESK_WIDTH / 2, y: desk.y + DESK_BODY_HEIGHT + 10 }
+export function deskChairSpot(desk: Desk) {
+  return { x: desk.x + DESK_WIDTH / 2, y: desk.y - 2 }
 }
 
 export const DESK_REACH = 10

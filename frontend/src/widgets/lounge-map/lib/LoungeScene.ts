@@ -37,7 +37,7 @@ import {
   DESK_SPRITE_HEIGHT,
   DESK_WIDTH,
   DESKS,
-  deskFrontSpot,
+  deskChairSpot,
   KENNEY_SPACING,
   KENNEY_TILE,
   WALL_HEIGHT,
@@ -283,7 +283,7 @@ export class LoungeScene extends Phaser.Scene {
         .map((avatar) => [avatar.deskId, avatar]),
     )
     const nearest = DESKS.map((desk) => {
-      const spot = deskFrontSpot(desk)
+      const spot = deskChairSpot(desk)
       return {
         desk,
         distance: Math.hypot(spot.x - this.cat.x, spot.y - this.cat.y),
@@ -311,7 +311,11 @@ export class LoungeScene extends Phaser.Scene {
         (nearest.desk.x + DESK_WIDTH / 2 - camera.worldView.x) * camera.zoom,
       ),
       screenY: Math.round(
-        (nearest.desk.y + DESK_SPRITE_TOP - camera.worldView.y) * camera.zoom,
+        (nearest.desk.y +
+          DESK_SPRITE_TOP +
+          DESK_SPRITE_HEIGHT -
+          camera.worldView.y) *
+          camera.zoom,
       ),
     })
   }
@@ -413,7 +417,7 @@ export class LoungeScene extends Phaser.Scene {
   }
 
   private standUpFrom(deskId: number) {
-    const spot = deskFrontSpot(DESKS[deskId])
+    const spot = deskChairSpot(DESKS[deskId])
     this.catBody.enable = true
     this.catBody.reset(spot.x, spot.y)
     this.cat.setPosition(spot.x, spot.y).setDepth(spot.y)

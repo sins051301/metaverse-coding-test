@@ -16,7 +16,7 @@ export const canvasHost = style({
 
 export const tooltip = style({
   position: 'absolute',
-  transform: `translate(-50%, calc(-100% - ${vars.space.xs}))`,
+  transform: `translate(-50%, ${vars.space.xs})`,
   display: 'flex',
   alignItems: 'center',
   gap: vars.space.xs,
