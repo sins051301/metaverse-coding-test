@@ -32,10 +32,6 @@ export function useJudge(problemId: number) {
     mutationFn: ({ mode, source }: { mode: JudgeMode; source: SourceCode }) =>
       requestJudge(mode, problemId, source),
     onSuccess: (accepted) => setJobId(accepted.id),
-    onError: (error) => {
-      if (isHttpError(error, 401))
-        void queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY })
-    },
   })
   const run = useQuery({
     ...runResultQuery(jobId ?? 0),
