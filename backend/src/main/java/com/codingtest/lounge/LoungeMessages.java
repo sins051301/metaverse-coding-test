@@ -54,9 +54,10 @@ final class LoungeMessages {
 	 * 연결 직후(다시 연결했을 때도) 보낸다. 로그인하러 떠났다 오면 저장해 둔 자리·털색으로 다시 입장해 이어진 것처럼 보인다.
 	 *
 	 * @param nickname 게스트만 쓴다 (익명_XXXX). 회원은 서버가 DB 닉네임을 쓴다
-	 * @param deskId   앉아 있던 채로 다시 연결했으면 그 책상. 그새 남이 앉았으면 서 있는 상태로 입장한다
+	 * @param deskId     앉아 있던 채로 다시 연결했으면 그 책상. 그새 남이 앉았으면 서 있는 상태로 입장한다
+	 * @param browserKey 브라우저마다 한 번 만들어 localStorage 에 두는 UUID. 게스트의 "같은 브라우저" 판별에만 쓰고 방송하지 않는다
 	 */
-	record JoinRequest(String nickname, String coat, int x, int y, String direction, Integer deskId) {
+	record JoinRequest(String nickname, String coat, int x, int y, String direction, Integer deskId, String browserKey) {
 	}
 
 	record MoveRequest(int x, int y, String direction, boolean moving) {
@@ -84,7 +85,8 @@ final class LoungeMessages {
 	/**
 	 * /topic/lounge 로 모두에게 방송한다. 누가 문제를 풀었는지.
 	 *
-	 * @param avatarIds 푼 회원의 아바타들 (탭을 여러 개 열었으면 여럿, 라운지에 없으면 비어 있음). 머리 위에 별을 띄운다
+	 * @param avatarIds         푼 회원의 아바타 (회원은 한 마리만 있으므로 하나, 라운지에 없으면 비어 있음). 머리 위에 별을 띄운다
+	 * @param solvedTodayCount  오늘(한국 시각) 문제를 하나라도 푼 회원 수. 칠판에 쓴다
 	 */
 	record ChatEvent(String type, ChatMessage chat) {
 
@@ -94,10 +96,10 @@ final class LoungeMessages {
 
 	}
 
-	record SolvedEvent(String type, List<String> avatarIds, RecentSolve solve) {
+	record SolvedEvent(String type, List<String> avatarIds, RecentSolve solve, int solvedTodayCount) {
 
-		SolvedEvent(List<String> avatarIds, RecentSolve solve) {
-			this("solved", avatarIds, solve);
+		SolvedEvent(List<String> avatarIds, RecentSolve solve, int solvedTodayCount) {
+			this("solved", avatarIds, solve, solvedTodayCount);
 		}
 
 	}
@@ -105,28 +107,34 @@ final class LoungeMessages {
 	/**
 	 * /user/queue/lounge 로 나에게만 보낸다.
 	 *
-	 * @param type       snapshot = 입장 직후 지금 있는 모두, sit-rejected = 그 책상에 이미 누가 앉아 있음
+	 * @param type       snapshot = 입장 직후 지금 있는 모두, sit-rejected = 그 책상에 이미 누가 앉아 있음,
+	 *                   replaced = 같은 회원(또는 같은 브라우저의 게스트)이 다른 탭에서 들어와 이 탭의 고양이가 빠짐
 	 * @param myAvatarId snapshot 에서 내 아바타가 어느 것인지
 	 * @param avatars    snapshot 의 전체 목록 (나 포함)
 	 * @param deskId       sit-rejected 의 책상 번호
 	 * @param recentSolves snapshot 의 최근 푼 기록 (새것이 먼저)
 	 * @param recentChats  snapshot 의 최근 채팅 (오래된 것이 먼저)
 	 * @param reason       chat-rejected 의 이유 (too-long, too-fast)
+	 * @param solvedTodayCount snapshot 의 오늘 푼 회원 수
 	 */
 	record PersonalMessage(String type, String myAvatarId, List<AvatarState> avatars, Integer deskId,
-			List<RecentSolve> recentSolves, List<ChatMessage> recentChats, String reason) {
+			List<RecentSolve> recentSolves, List<ChatMessage> recentChats, String reason, Integer solvedTodayCount) {
 
 		static PersonalMessage snapshot(String myAvatarId, List<AvatarState> avatars, List<RecentSolve> recentSolves,
-				List<ChatMessage> recentChats) {
-			return new PersonalMessage("snapshot", myAvatarId, avatars, null, recentSolves, recentChats, null);
+				List<ChatMessage> recentChats, int solvedTodayCount) {
+			return new PersonalMessage("snapshot", myAvatarId, avatars, null, recentSolves, recentChats, null, solvedTodayCount);
 		}
 
 		static PersonalMessage sitRejected(int deskId) {
-			return new PersonalMessage("sit-rejected", null, null, deskId, null, null, null);
+			return new PersonalMessage("sit-rejected", null, null, deskId, null, null, null, null);
 		}
 
 		static PersonalMessage chatRejected(String reason) {
-			return new PersonalMessage("chat-rejected", null, null, null, null, null, reason);
+			return new PersonalMessage("chat-rejected", null, null, null, null, null, reason, null);
+		}
+
+		static PersonalMessage replaced() {
+			return new PersonalMessage("replaced", null, null, null, null, null, null, null);
 		}
 
 	}

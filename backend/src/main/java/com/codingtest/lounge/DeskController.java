@@ -61,6 +61,7 @@ class DeskController {
 		Room room = hosted.room();
 		String owner = identity.avatarId();
 		send(owner, DeskMessage.hosted(room));
+		hosted.waiters().forEach(waiter -> admit(owner, waiter.target(), waiter.spectator()));
 		if (!hosted.reopened()) {
 			return;
 		}
@@ -77,21 +78,33 @@ class DeskController {
 
 	@MessageMapping("/desk/close")
 	void close(LoungeIdentity identity) {
-		rooms.close(identity.avatarId()).ifPresent(this::announceClosed);
+		rooms.close(identity.avatarId())
+				.ifPresent(room -> sendToAll(room.spectators(), DeskMessage.paused(room.id())));
 	}
 
 	/**
 	 * 관전 시작: 관전자에게 방 정보를, 주인에게 "이 사람에게 문서 전체를 보내 달라"와 관전자 수를 보낸다.
 	 * 페어 상대였던 회원이 다시 들어오면 페어를 이어 간다.
 	 *
-	 * @param target 방 id, 또는 주인의 아바타 id (라운지에서 들어올 때). 답(opened)의 roomId 가 실제 방 id 다
+	 * @param target 방 id, 또는 주인의 아바타 id (라운지에서 들어올 때). 답(opened)의 roomId 가 실제 방 id 다.
+	 *               방이 없으면 not-found 를 보내고 대기로 둔다. 주인이 방을 열면 그때 opened 가 간다 (host)
 	 */
 	@MessageMapping("/desk/{target}/join")
 	void join(@DestinationVariable String target, LoungeIdentity identity) {
+		if (!admit(target, target, identity)) {
+			send(identity.avatarId(), DeskMessage.notFound(target));
+		}
+	}
+
+	/**
+	 * @param replyTarget opened 에 실을 값. 관전자가 처음 보낸 target 이어야 관전자 화면이 자기 답으로 알아본다
+	 * @return 방에 들어갔는지
+	 */
+	private boolean admit(String target, String replyTarget, LoungeIdentity identity) {
 		String me = identity.avatarId();
-		rooms.join(target, identity).ifPresentOrElse(joined -> {
+		return rooms.join(target, identity).map(joined -> {
 			Room room = joined.room();
-			send(me, DeskMessage.opened(room, target, joined.pairable()));
+			send(me, DeskMessage.opened(room, replyTarget, joined.pairable()));
 			if (room.ownerAway()) {
 				send(me, DeskMessage.ownerAway(room.id()));
 			} else {
@@ -107,7 +120,8 @@ class DeskController {
 					send(joined.replacedAvatarId(), DeskMessage.pairEnded(room.id()));
 				}
 			}
-		}, () -> send(me, DeskMessage.notFound(target)));
+			return true;
+		}).orElse(false);
 	}
 
 	@MessageMapping("/desk/{roomId}/leave")

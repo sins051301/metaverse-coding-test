@@ -21,6 +21,9 @@ import java.util.UUID;
  * <p>방 하나에 주인 1명 + 관전자 여럿 + 그중 페어 상대 최대 1명. 페어는 회원 주인과 회원 관전자 사이에서만 된다.
  * 회원 주인·페어 상대의 연결이 끊기면 바로 정리하지 않고 "잠깐 자리 비움"으로 두었다가, 유예 시간 안에 돌아오지 않으면 정리한다 (expire...).
  *
+ * <p>주인이 아직 풀이 화면을 열지 않았거나 풀이 화면을 닫은 책상에 들어온 관전자는 "대기"로 둔다. 주인이 방을 열면 대기자를 관전자로 넣는다.
+ * 그래서 관전 화면을 다시 열지 않아도 주인이 풀기 시작하는 순간 코드가 보인다. 대기는 주인의 지금 연결(아바타 id)에 묶고, 주인이 라운지를 떠나면 버린다.
+ *
  * <p>모든 메서드는 synchronized 다. 방 몇 개·몇 명 규모라 잠금 하나로 충분하고, 여러 칸(관전자·요청·상대)을 한 번에 바꿔도 어긋나지 않는다.
  */
 @Component
@@ -52,9 +55,17 @@ class DeskRooms {
 	}
 
 	/**
-	 * @param reopened        이미 있던 방을 이어 연 경우 (문제·언어를 바꿈, 다시 연결함, 다른 탭에서 엶)
+	 * @param spectator 기다리는 관전자
+	 * @param target    관전자가 들어올 때 쓴 값 (주인의 아바타 id, 또는 닫히기 전의 방 id). opened 답에 그대로 실어 관전자가 자기 답인지 알아보게 한다
 	 */
-	record Hosted(Room room, boolean reopened) {
+	record Waiter(LoungeIdentity spectator, String target) {
+	}
+
+	/**
+	 * @param reopened        이미 있던 방을 이어 연 경우 (문제·언어를 바꿈, 다시 연결함, 다른 탭에서 엶)
+	 * @param waiters         이 주인이 방을 열기를 기다리던 관전자들. 관전자로 넣어 opened 를 보낸다
+	 */
+	record Hosted(Room room, boolean reopened, List<Waiter> waiters) {
 	}
 
 	/**
@@ -92,7 +103,7 @@ class DeskRooms {
 		long problemId;
 		String language;
 		long ownerAwayTicket;
-		final Set<String> spectators = new LinkedHashSet<>();
+		final Map<String, LoungeIdentity> spectators = new LinkedHashMap<>();
 		final Map<String, Requester> pairRequests = new LinkedHashMap<>();
 		Long partnerUserId;
 		String partnerAvatarId;
@@ -117,14 +128,18 @@ class DeskRooms {
 		}
 
 		Room snapshot() {
-			return new Room(id, ownerAvatarId, ownerNickname, pairable(), problemId, language, Set.copyOf(spectators),
+			return new Room(id, ownerAvatarId, ownerNickname, pairable(), problemId, language, Set.copyOf(spectators.keySet()),
 					partnerAvatarId, partnerNickname);
 		}
 
 	}
 
+	private static final String ROOM_ID_PREFIX = "d-";
+
 	private final Map<String, State> rooms = new HashMap<>();
 	private final Map<String, String> roomIdByOwnerKey = new HashMap<>();
+	// 주인 아바타 id → (관전자 아바타 id → 대기자)
+	private final Map<String, Map<String, Waiter>> waitingByOwnerAvatar = new HashMap<>();
 	private long lastTicket;
 
 	/**
@@ -135,7 +150,7 @@ class DeskRooms {
 		State state = Optional.ofNullable(roomIdByOwnerKey.get(ownerKey(owner))).map(rooms::get).orElse(null);
 		boolean reopened = state != null;
 		if (state == null) {
-			state = new State("d-" + UUID.randomUUID().toString().substring(0, 8), owner);
+			state = new State(ROOM_ID_PREFIX + UUID.randomUUID().toString().substring(0, 8), owner);
 			rooms.put(state.id, state);
 			roomIdByOwnerKey.put(state.ownerKey, state.id);
 		}
@@ -145,18 +160,28 @@ class DeskRooms {
 		state.language = language;
 		state.ownerAwayTicket = 0;
 		state.pairRequests.clear();
-		return new Hosted(state.snapshot(), reopened);
+		Map<String, Waiter> waiting = waitingByOwnerAvatar.remove(owner.avatarId());
+		List<Waiter> waiters = waiting == null ? List.of() : List.copyOf(waiting.values());
+		return new Hosted(state.snapshot(), reopened, waiters);
 	}
 
 	/**
-	 * @param target 방 id, 또는 주인의 아바타 id (라운지에서 책상 주인 고양이를 보고 들어올 때)
+	 * @param target 방 id, 또는 주인의 아바타 id (라운지에서 책상 주인 고양이를 보고 들어올 때).
+	 *               주인의 아바타 id 인데 아직 방이 없으면 대기로 둔다 (비어 있음을 돌려주지만, 주인이 방을 열면 host 의 waiters 로 나온다)
 	 */
 	synchronized Optional<Joined> join(String target, LoungeIdentity spectator) {
+		stopWaiting(spectator.avatarId());
 		State state = find(target);
-		if (state == null || spectator.avatarId().equals(state.ownerAvatarId)) {
+		if (state == null) {
+			if (!target.startsWith(ROOM_ID_PREFIX) && !target.equals(spectator.avatarId())) {
+				startWaiting(target, new Waiter(spectator, target));
+			}
 			return Optional.empty();
 		}
-		state.spectators.add(spectator.avatarId());
+		if (spectator.avatarId().equals(state.ownerAvatarId)) {
+			return Optional.empty();
+		}
+		state.spectators.put(spectator.avatarId(), spectator);
 		boolean resumedPartner = spectator.member() && spectator.userId().equals(state.partnerUserId);
 		String replaced = null;
 		if (resumedPartner) {
@@ -175,8 +200,9 @@ class DeskRooms {
 
 	// 관전 화면을 닫고 나감. 페어 상대였으면 기다리지 않고 페어를 끝낸다 (스스로 나간 것이므로)
 	synchronized Optional<Left> leave(String roomId, String spectatorId) {
+		stopWaiting(spectatorId);
 		State state = rooms.get(roomId);
-		if (state == null || !state.spectators.remove(spectatorId)) {
+		if (state == null || state.spectators.remove(spectatorId) == null) {
 			return Optional.empty();
 		}
 		state.pairRequests.remove(spectatorId);
@@ -206,7 +232,7 @@ class DeskRooms {
 	synchronized Optional<Room> requestPair(String roomId, LoungeIdentity requester, String nickname) {
 		State state = rooms.get(roomId);
 		if (state == null || state.ownerAvatarId == null || !state.pairable() || !requester.member()
-				|| requester.userId().equals(state.ownerUserId) || !state.spectators.contains(requester.avatarId())
+				|| requester.userId().equals(state.ownerUserId) || !state.spectators.containsKey(requester.avatarId())
 				|| state.partnerUserId != null) {
 			return Optional.empty();
 		}
@@ -225,7 +251,7 @@ class DeskRooms {
 			return Optional.empty();
 		}
 		Requester requester = state.pairRequests.remove(requesterId);
-		if (requester == null || !state.spectators.contains(requesterId) || state.partnerUserId != null) {
+		if (requester == null || !state.spectators.containsKey(requesterId) || state.partnerUserId != null) {
 			return Optional.empty();
 		}
 		state.partnerUserId = requester.userId();
@@ -262,10 +288,15 @@ class DeskRooms {
 		return Optional.of(Set.of(state.ownerAvatarId, state.partnerAvatarId));
 	}
 
-	// 주인이 풀이 화면을 닫음 (일어나기, 다른 화면으로 이동). 기다리지 않고 바로 닫는다
+	// 주인이 풀이 화면을 닫음 (일어나기, 다른 화면으로 이동). 기다리지 않고 바로 닫는다.
+	// 주인은 아직 라운지에 있으니 관전자들은 대기로 옮긴다. 주인이 다시 풀기 시작하면 이어서 본다
 	synchronized Optional<Room> close(String ownerAvatarId) {
 		State state = findByOwnerAvatar(ownerAvatarId);
-		return state == null ? Optional.empty() : Optional.of(remove(state));
+		if (state == null) {
+			return Optional.empty();
+		}
+		state.spectators.values().forEach(spectator -> startWaiting(ownerAvatarId, new Waiter(spectator, state.id)));
+		return Optional.of(remove(state));
 	}
 
 	/**
@@ -276,9 +307,12 @@ class DeskRooms {
 	 *   <li>회원 주인의 방: 자리 비움으로 두고 유예 후 expireOwner</li>
 	 *   <li>페어 상대: 관전자 명단에서 빼고 페어는 자리 비움으로 두고 유예 후 expirePartner</li>
 	 *   <li>그 밖의 관전자: 명단에서 뺀다 (주인에게 관전자 수를 알림)</li>
+	 *   <li>대기: 이 사람이 기다리던 것도, 이 사람을 기다리던 대기자 목록도 버린다</li>
 	 * </ul>
 	 */
 	synchronized Disconnected disconnect(String avatarId) {
+		stopWaiting(avatarId);
+		waitingByOwnerAvatar.remove(avatarId);
 		List<Room> closed = new ArrayList<>();
 		List<Away> ownersAway = new ArrayList<>();
 		List<Away> partnersAway = new ArrayList<>();
@@ -293,7 +327,7 @@ class DeskRooms {
 				} else {
 					closed.add(remove(state));
 				}
-			} else if (state.spectators.remove(avatarId)) {
+			} else if (state.spectators.remove(avatarId) != null) {
 				state.pairRequests.remove(avatarId);
 				if (avatarId.equals(state.partnerAvatarId)) {
 					state.partnerAvatarId = null;
@@ -325,6 +359,20 @@ class DeskRooms {
 		}
 		state.endPair();
 		return Optional.of(state.snapshot());
+	}
+
+	private void startWaiting(String ownerAvatarId, Waiter waiter) {
+		stopWaiting(waiter.spectator().avatarId());
+		waitingByOwnerAvatar.computeIfAbsent(ownerAvatarId, owner -> new LinkedHashMap<>())
+				.put(waiter.spectator().avatarId(), waiter);
+	}
+
+	// 한 관전자는 한 책상만 기다린다
+	private void stopWaiting(String spectatorAvatarId) {
+		waitingByOwnerAvatar.values().removeIf(waiters -> {
+			waiters.remove(spectatorAvatarId);
+			return waiters.isEmpty();
+		});
 	}
 
 	private State find(String target) {

@@ -34,6 +34,7 @@ class LoungeRegistry {
 	private static final Set<String> COATS = Set.of("ginger", "grey", "black", "white", "siamese");
 	private static final Set<String> DIRECTIONS = Set.of("down", "up", "left", "right");
 	private static final Pattern GUEST_NICKNAME = Pattern.compile("익명_[0-9A-F]{4}");
+	private static final Pattern BROWSER_KEY = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
 	private static final Set<String> ACTIVITIES = Set.of("idle", "typing", "napping");
 	private static final int RECENT_SOLVE_LIMIT = 5;
 	static final int CHAT_MAX_LENGTH = 200;
@@ -50,10 +51,31 @@ class LoungeRegistry {
 	// 최근 채팅. 오래된 것이 앞. recentSolves 처럼 synchronized 로 감싸서 쓴다
 	private final Deque<ChatMessage> recentChats = new ArrayDeque<>();
 	private final Map<String, Instant> lastChatAt = new ConcurrentHashMap<>();
+	// 한 사람에 고양이 한 마리: 사람 키(회원은 user:{id}, 게스트는 browser:{browserKey}) → 지금 그 사람의 아바타
+	private final Map<String, String> avatarOfOwner = new ConcurrentHashMap<>();
+	private final Map<String, String> ownerOfAvatar = new ConcurrentHashMap<>();
 
-	AvatarState join(LoungeIdentity identity, JoinRequest request) {
+	/**
+	 * @param avatar   새로 들어온 아바타
+	 * @param replaced 같은 사람이 다른 탭에 두고 있던 아바타. 지웠으니 퇴장을 알리고 그 탭에 replaced 를 보낸다
+	 */
+	record Joined(AvatarState avatar, Optional<AvatarState> replaced) {
+	}
+
+	/**
+	 * 같은 사람이 이미 다른 탭(연결)에 고양이를 두고 있으면 그 고양이를 지우고 새 고양이를 넣는다.
+	 * 회원은 쿠키의 userId 로 판별해 기기가 달라도 한 마리다. 게스트는 믿을 신원이 없어 브라우저가 보낸 browserKey 로 판별한다.
+	 * browserKey 는 위조할 수 있지만 남의 키는 방송되지 않아 알 수 없고, 맞혀도 게스트 고양이 하나가 빠질 뿐이다.
+	 */
+	Joined join(LoungeIdentity identity, JoinRequest request) {
 		String avatarId = identity.avatarId();
 		leave(avatarId);
+		Optional<AvatarState> replaced = ownerKey(identity, request.browserKey())
+				.flatMap(ownerKey -> {
+					ownerOfAvatar.put(avatarId, ownerKey);
+					return Optional.ofNullable(avatarOfOwner.put(ownerKey, avatarId));
+				})
+				.flatMap(this::leave);
 		Integer requestedDesk = request.deskId();
 		boolean seated = requestedDesk != null && LoungeMap.isDesk(requestedDesk)
 				&& deskOwners.putIfAbsent(requestedDesk, avatarId) == null;
@@ -72,7 +94,17 @@ class LoungeRegistry {
 		if (identity.member()) {
 			avatarUsers.put(avatarId, identity.userId());
 		}
-		return avatar;
+		return new Joined(avatar, replaced);
+	}
+
+	private static Optional<String> ownerKey(LoungeIdentity identity, String browserKey) {
+		if (identity.member()) {
+			return Optional.of("user:" + identity.userId());
+		}
+		if (browserKey != null && BROWSER_KEY.matcher(browserKey).matches()) {
+			return Optional.of("browser:" + browserKey);
+		}
+		return Optional.empty();
 	}
 
 	// 앉아 있는 고양이는 움직이지 않는다. 늦게 도착한 이동 메시지가 앉은 고양이를 옮기지 않게 무시한다
@@ -186,6 +218,10 @@ class LoungeRegistry {
 	}
 
 	Optional<AvatarState> leave(String avatarId) {
+		String ownerKey = ownerOfAvatar.remove(avatarId);
+		if (ownerKey != null) {
+			avatarOfOwner.remove(ownerKey, avatarId);
+		}
 		avatarUsers.remove(avatarId);
 		lastChatAt.remove(avatarId);
 		AvatarState removed = avatars.remove(avatarId);
