@@ -115,10 +115,12 @@ Vercel 은 프론트 배포에 흔히 쓰고 무료지만, 이 프로젝트에�
 ### 3-1. 서버 준비 (한 번만)
 
 1. 오라클 콘솔 Security List 에 TCP 80, 443 인바운드 허용 (22 는 기본 허용)
-2. 서버 방화벽(iptables) 에도 80, 443 허용. 오라클 Ubuntu 이미지는 기본으로 막혀 있다
+2. 서버 방화벽(iptables) 에도 80, 443 허용. 오라클 Ubuntu 이미지는 기본으로 막혀 있다.
+   규칙은 위에서부터 검사하므로 `REJECT` 줄보다 **앞에** 넣어야 한다. Ubuntu 24.04 이미지(2026-11)는 REJECT 가 5번이라 5번에 넣는다. 넣기 전에 번호를 확인한다
    ```bash
-   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
-   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+   sudo iptables -L INPUT -n --line-numbers
+   sudo iptables -I INPUT 5 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+   sudo iptables -I INPUT 5 -m state --state NEW -p tcp --dport 443 -j ACCEPT
    sudo netfilter-persistent save
    ```
 3. Docker 설치 (공식 apt 저장소), `sudo usermod -aG docker ubuntu`

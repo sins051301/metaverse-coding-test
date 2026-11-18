@@ -9,7 +9,7 @@ final class LoungeMap {
 	static final int WORLD_WIDTH = 320;
 	static final int WORLD_HEIGHT = 180;
 	static final int WALL_HEIGHT = 30;
-	static final int DESK_COUNT = 15;
+	static final int DESK_COUNT = 30;
 
 	private LoungeMap() {
 	}

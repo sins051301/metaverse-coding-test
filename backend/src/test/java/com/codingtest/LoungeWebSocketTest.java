@@ -171,11 +171,14 @@ class LoungeWebSocketTest {
 		JsonNode solved = member.awaitEventOfType("solved");
 		assertThat(solved.path("avatarIds").valueStream().map(JsonNode::asString).toList()).containsExactly(memberId);
 		assertThat(solved.path("solve").path("nickname").asString()).isEqualTo(user.getNickname());
-		assertThat(solved.path("solve").path("problemTitle").asString()).isEqualTo("짝수는 몇 개일까");
+		assertThat(solved.path("solve").path("problemTitle").asString()).isEqualTo("짝수 번호표 세기");
+		int solvedTodayCount = solved.path("solvedTodayCount").asInt();
+		assertThat(solvedTodayCount).as("오늘 푼 회원 수에 방금 푼 회원이 들어간다").isPositive();
 
 		LoungeClient latecomer = connect(null);
 		latecomer.join(200, 150, null);
 		assertThat(latecomer.snapshot.path("recentSolves").get(0).path("nickname").asString()).isEqualTo(user.getNickname());
+		assertThat(latecomer.snapshot.path("solvedTodayCount").asInt()).isGreaterThanOrEqualTo(solvedTodayCount);
 	}
 
 	@Test
@@ -207,6 +210,54 @@ class LoungeWebSocketTest {
 		owner.send("/app/desk/" + roomId + "/update", Map.of("kind", "doc", "payload", "AQID"));
 		assertThat(spectator.awaitDesk("update").path("payload").asString()).isEqualTo("AQID");
 		outsider.assertNoDesk("update");
+	}
+
+	@Test
+	@DisplayName("관전: 주인이 아직 풀이 화면을 열지 않은 책상에 들어가면 not-found 로 기다리다가, 주인이 방을 열면 opened 를 받고 주인은 문서를 보내 달라는 요청을 받는다")
+	void spectatorWaitsUntilOwnerHosts() throws Exception {
+		LoungeClient owner = connect(null);
+		String ownerId = owner.join(100, 120, 7);
+		LoungeClient spectator = connect(null);
+		String spectatorId = spectator.join(160, 130, null);
+
+		spectator.send("/app/desk/" + ownerId + "/join", Map.of());
+		spectator.awaitDesk("not-found");
+
+		String roomId = owner.host();
+		JsonNode opened = spectator.awaitDesk("opened");
+		assertThat(opened.path("roomId").asString()).isEqualTo(roomId);
+		assertThat(opened.path("target").asString()).as("처음 보낸 target 을 그대로 실어야 관전 화면이 자기 답으로 안다").isEqualTo(ownerId);
+		assertThat(owner.awaitDesk("member-joined").path("memberId").asString()).isEqualTo(spectatorId);
+	}
+
+	@Test
+	@DisplayName("관전: 주인이 풀이 화면을 닫으면 paused, 다시 열면 같은 관전자가 새 방의 opened 를 받는다. 관전 화면을 나간 사람은 받지 않는다")
+	void spectatorFollowsOwnerAfterClose() throws Exception {
+		LoungeClient owner = connect(null);
+		owner.join(100, 120, 7);
+		String firstRoom = owner.host();
+		LoungeClient stayed = connect(null);
+		stayed.join(160, 130, null);
+		LoungeClient gone = connect(null);
+		gone.join(200, 150, null);
+		stayed.send("/app/desk/" + firstRoom + "/join", Map.of());
+		gone.send("/app/desk/" + firstRoom + "/join", Map.of());
+		stayed.awaitDesk("opened");
+		gone.awaitDesk("opened");
+
+		owner.send("/app/desk/close", Map.of());
+		stayed.awaitDesk("paused");
+		gone.awaitDesk("paused");
+		gone.send("/app/desk/" + firstRoom + "/leave", Map.of());
+		// 나가기에는 답이 없고, 다른 연결의 메시지는 서로 다른 스레드에서 처리된다. 나가기가 먼저 처리되도록 잠깐 둔다
+		Thread.sleep(300);
+
+		String secondRoom = owner.host();
+		JsonNode reopened = stayed.awaitDesk("opened");
+		assertThat(secondRoom).isNotEqualTo(firstRoom);
+		assertThat(reopened.path("roomId").asString()).isEqualTo(secondRoom);
+		assertThat(reopened.path("target").asString()).isEqualTo(firstRoom);
+		gone.assertNoDesk("opened");
 	}
 
 	@Test
@@ -430,6 +481,44 @@ class LoungeWebSocketTest {
 	}
 
 	@Test
+	@DisplayName("같은 회원이 다른 탭으로 들어오면 이전 탭의 고양이는 퇴장하고 그 탭에 replaced 가 간다. 라운지에는 한 마리만 남는다")
+	void memberHasOneCatAcrossTabs() throws Exception {
+		LoungeClient observer = connect(null);
+		observer.join(200, 150, null);
+		User user = newUser("one-cat-member");
+		LoungeClient firstTab = connect(cookieOf(user));
+		String firstId = firstTab.join(100, 120, 4);
+
+		LoungeClient secondTab = connect(cookieOf(user));
+		String secondId = secondTab.join(160, 130, null);
+
+		firstTab.awaitPersonal("replaced");
+		observer.awaitEvent("left", firstId);
+		assertThat(observer.awaitEvent("joined", secondId).path("avatar").path("nickname").asString()).isEqualTo(user.getNickname());
+		assertThat(secondTab.lastSnapshotIds()).contains(secondId).doesNotContain(firstId);
+		observer.send("/app/lounge/sit", Map.of("deskId", 4));
+		assertThat(observer.awaitEvent("sat", observer.myAvatarId).path("avatar").path("deskId").asInt())
+				.as("빠진 고양이가 앉아 있던 책상은 비워진다").isEqualTo(4);
+	}
+
+	@Test
+	@DisplayName("게스트는 같은 browserKey 면 이전 탭이 빠지고, 다른 browserKey(다른 브라우저·시크릿 창)면 따로 한 마리씩 있다")
+	void guestHasOneCatPerBrowser() throws Exception {
+		String browserKey = UUID.randomUUID().toString();
+		LoungeClient firstTab = connect(null);
+		String firstId = firstTab.joinFrom(browserKey);
+		LoungeClient otherBrowser = connect(null);
+		String otherId = otherBrowser.joinFrom(UUID.randomUUID().toString());
+
+		LoungeClient secondTab = connect(null);
+		String secondId = secondTab.joinFrom(browserKey);
+
+		firstTab.awaitPersonal("replaced");
+		otherBrowser.awaitEvent("left", firstId);
+		assertThat(secondTab.lastSnapshotIds()).contains(secondId, otherId).doesNotContain(firstId);
+	}
+
+	@Test
 	@DisplayName("허용한 프론트 주소가 아닌 다른 사이트(Origin)에서는 연결할 수 없다")
 	void rejectsOtherOrigins() {
 		assertThatThrownBy(() -> connect(null, "http://evil.example")).isInstanceOf(Exception.class);
@@ -503,6 +592,11 @@ class LoungeWebSocketTest {
 			Map<String, Object> request = new HashMap<>(Map.of("coat", "grey", "x", x, "y", y, "direction", "down"));
 			request.put("deskId", deskId);
 			send("/app/lounge/join", request);
+			return awaitSnapshot().path("myAvatarId").asString();
+		}
+
+		String joinFrom(String browserKey) throws InterruptedException {
+			send("/app/lounge/join", Map.of("coat", "grey", "x", 100, "y", 120, "direction", "down", "browserKey", browserKey));
 			return awaitSnapshot().path("myAvatarId").asString();
 		}
 

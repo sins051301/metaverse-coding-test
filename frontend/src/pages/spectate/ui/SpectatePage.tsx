@@ -71,7 +71,9 @@ export function SpectatePage() {
               ? '책상에 다가가는 중이에요.'
               : state.phase === 'closed'
                 ? '자리를 떠났어요. 코드 구경이 끝났어요.'
-                : '아직 풀이 화면을 열지 않은 책상이에요.'}
+                : state.phase === 'paused'
+                  ? '풀이 화면을 닫았어요. 다시 풀기 시작하면 이어서 보여요.'
+                  : '아직 풀이 화면을 열지 않았어요. 열면 바로 보여요.'}
           </span>
           <span className={styles.spacer} />
           <Button size="small" onClick={leave}>

@@ -38,20 +38,30 @@ class LoungeController {
 	private final SimpMessagingTemplate messagingTemplate;
 	private final UserService userService;
 	private final ProblemService problemService;
+	private final TodaySolvers todaySolvers;
 
-	LoungeController(LoungeRegistry registry, SimpMessagingTemplate messagingTemplate, UserService userService, ProblemService problemService) {
+	LoungeController(LoungeRegistry registry, SimpMessagingTemplate messagingTemplate, UserService userService,
+			ProblemService problemService, TodaySolvers todaySolvers) {
 		this.registry = registry;
 		this.messagingTemplate = messagingTemplate;
 		this.userService = userService;
 		this.problemService = problemService;
+		this.todaySolvers = todaySolvers;
 	}
 
-	// 입장: 나에게는 지금 있는 모두(snapshot)를, 다른 사람에게는 "내가 들어왔다"를 보낸다
+	// 입장: 나에게는 지금 있는 모두(snapshot)를, 다른 사람에게는 "내가 들어왔다"를 보낸다.
+	// 같은 사람이 다른 탭에 두고 있던 고양이는 빠지고, 그 탭에는 replaced 를 보내 다시 연결하지 않게 한다
 	@MessageMapping("/lounge/join")
 	void join(JoinRequest request, LoungeIdentity identity) {
-		AvatarState avatar = registry.join(identity, request);
+		LoungeRegistry.Joined joined = registry.join(identity, request);
+		AvatarState avatar = joined.avatar();
+		joined.replaced().ifPresent(previous -> {
+			messagingTemplate.convertAndSendToUser(previous.id(), PERSONAL_QUEUE, PersonalMessage.replaced());
+			broadcast("left", previous);
+		});
 		messagingTemplate.convertAndSendToUser(identity.getName(), PERSONAL_QUEUE,
-				PersonalMessage.snapshot(avatar.id(), registry.all(), registry.recentSolves(), registry.recentChats()));
+				PersonalMessage.snapshot(avatar.id(), registry.all(), registry.recentSolves(), registry.recentChats(),
+						todaySolvers.count()));
 		broadcast("joined", avatar);
 	}
 
@@ -102,7 +112,8 @@ class LoungeController {
 		}
 		RecentSolve solve = new RecentSolve(nickname, problemService.getProblem(event.problemId()).getTitle(), Instant.now());
 		registry.recordSolve(solve);
-		messagingTemplate.convertAndSend(TOPIC, new SolvedEvent(registry.avatarIdsOf(event.userId()), solve));
+		int solvedTodayCount = todaySolvers.add(event.userId());
+		messagingTemplate.convertAndSend(TOPIC, new SolvedEvent(registry.avatarIdsOf(event.userId()), solve, solvedTodayCount));
 	}
 
 	// 탭을 닫거나 네트워크가 끊기면 연결이 끝난다. 그 아바타를 지우고 앉아 있던 책상을 비운다

@@ -54,7 +54,8 @@ final class DeskMessages {
 	 *   <li>reset (관전자): 주인이 문제·언어를 바꿨거나 다시 연결돼 새 문서가 됐다. 지금 문서를 버리고 full 을 기다린다. pairable 은 opened 때 받은 값을 그대로 쓴다</li>
 	 *   <li>owner-away (관전자): 주인 연결이 끊겨 돌아오길 기다리는 중. 그동안은 아무도 글을 못 쓴다</li>
 	 *   <li>update, full: Yjs 바이트. kind, payload</li>
-	 *   <li>closed (관전자): 주인이 일어났거나 나갔다 / not-found (관전자): 열린 방이 없다</li>
+	 *   <li>closed (관전자): 주인이 라운지를 떠났다 / paused (관전자): 주인이 풀이 화면을 닫았다. 다시 열면 opened 가 온다 /
+	 *       not-found (관전자): 열린 방이 없다. 주인이 방을 열면 opened 가 온다</li>
 	 *   <li>member-joined (주인): 새 관전자. memberId 에게 full 을 보내라는 뜻 / spectators (주인): 관전자 수</li>
 	 *   <li>pair-requested (주인): memberId, nickname 이 같이 풀자고 한다</li>
 	 *   <li>pair-started (주인·상대): memberId(상대), nickname(상대) 와 페어 시작. 상대는 이제 글을 쓸 수 있다</li>
@@ -88,6 +89,10 @@ final class DeskMessages {
 
 		static DeskMessage bytes(String type, String roomId, String kind, String payload) {
 			return new DeskMessage(type, roomId, null, null, null, kind, payload, null, null, null, null, null, null);
+		}
+
+		static DeskMessage paused(String roomId) {
+			return of("paused", roomId);
 		}
 
 		static DeskMessage closed(String roomId) {

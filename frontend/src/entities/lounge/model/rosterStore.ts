@@ -9,9 +9,11 @@ const CHAT_HISTORY_LIMIT = 30
 
 type RosterState = {
   connected: boolean
+  replaced: boolean
   myAvatarId: string | null
   avatars: ReadonlyMap<string, AvatarState>
   recentSolves: readonly RecentSolve[]
+  solvedTodayCount: number
   solvedAt: ReadonlyMap<string, number>
   chats: readonly ChatMessage[]
   lastChatAt: ReadonlyMap<string, { text: string; at: number }>
@@ -20,9 +22,11 @@ type RosterState = {
 
 let state: RosterState = {
   connected: false,
+  replaced: false,
   myAvatarId: null,
   avatars: new Map(),
   recentSolves: [],
+  solvedTodayCount: 0,
   solvedAt: new Map(),
   chats: [],
   lastChatAt: new Map(),
@@ -51,12 +55,14 @@ export const rosterStore = {
     avatars: AvatarState[],
     recentSolves: RecentSolve[],
     chats: ChatMessage[],
+    solvedTodayCount: number,
   ) {
     update({
       myAvatarId,
       avatars: new Map(avatars.map((avatar) => [avatar.id, avatar])),
       recentSolves,
       chats,
+      solvedTodayCount,
     })
   },
   addChat(chat: ChatMessage, now: number) {
@@ -68,15 +74,24 @@ export const rosterStore = {
       chatNotice: null,
     })
   },
+  setReplaced(replaced: boolean) {
+    update({ replaced })
+  },
   setChatNotice(chatNotice: string | null) {
     update({ chatNotice })
   },
-  recordSolve(avatarIds: string[], solve: RecentSolve, now: number) {
+  recordSolve(
+    avatarIds: string[],
+    solve: RecentSolve,
+    solvedTodayCount: number,
+    now: number,
+  ) {
     const solvedAt = new Map(state.solvedAt)
     avatarIds.forEach((avatarId) => solvedAt.set(avatarId, now))
     update({
       solvedAt,
       recentSolves: [solve, ...state.recentSolves].slice(0, 5),
+      solvedTodayCount,
     })
   },
   put(avatar: AvatarState) {
@@ -104,6 +119,10 @@ export function occupiedDeskIds(): Set<number> {
 
 export function useMyAvatarId(): string | null {
   return useSyncExternalStore(rosterStore.subscribe, () => state.myAvatarId)
+}
+
+export function useReplaced(): boolean {
+  return useSyncExternalStore(rosterStore.subscribe, () => state.replaced)
 }
 
 export function useChats(): readonly ChatMessage[] {

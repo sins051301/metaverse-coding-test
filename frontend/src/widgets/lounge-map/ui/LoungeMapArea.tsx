@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import { loungeConnection } from '@/entities/lounge/api/loungeConnection'
 import {
   loungeStore,
   useLoungeState,
 } from '@/entities/lounge/model/loungeStore'
+import { useReplaced } from '@/entities/lounge/model/rosterStore'
 import { readStorage, writeStorage } from '@/shared/lib/storage'
 import { Button } from '@/shared/ui/Button'
 import { ActivityStrip } from './ActivityStrip'
@@ -20,6 +22,7 @@ type LoungeMapAreaProps = {
 
 export function LoungeMapArea({ onStand }: LoungeMapAreaProps) {
   const { view } = useLoungeState()
+  const replaced = useReplaced()
   const [collapsed, setCollapsed] = useState(
     () => readStorage(localStorage, COLLAPSED_KEY) === 'true',
   )
@@ -92,6 +95,14 @@ export function LoungeMapArea({ onStand }: LoungeMapAreaProps) {
       {hidden ? <ActivityStrip onExpand={toggle} /> : null}
       <div className={styles.mapBox} hidden={hidden}>
         <LoungeMap />
+        {replaced ? (
+          <div className={styles.replaced} role="status">
+            <span>다른 탭에서 접속 중이에요</span>
+            <Button size="small" onClick={() => loungeConnection.restart()}>
+              여기서 접속
+            </Button>
+          </div>
+        ) : null}
       </div>
       {!panel ? (
         <div className={styles.keys}>

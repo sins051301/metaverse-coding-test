@@ -1,11 +1,13 @@
 package com.codingtest.submission;
 
 import com.codingtest.judge.JudgeStatus;
+import com.codingtest.judge.Verdict;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -18,6 +20,10 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 	// 서버 재시작 복구용. status 인덱스(ix_submissions_status)로 찾는다.
 	@Query("select submission.id from Submission submission where submission.status in :statuses order by submission.id")
 	List<Long> findIdsByStatusIn(Collection<JudgeStatus> statuses);
+
+	// 라운지 칠판의 "오늘 N명이 풀었어요". 서버가 켜진 뒤 하루에 한 번만 부르고, 그다음은 AC 알림으로 센다 (TodaySolvers)
+	@Query("select distinct submission.userId from Submission submission where submission.verdict = :verdict and submission.judgedAt >= :since")
+	List<Long> findUserIdsByVerdictJudgedSince(Verdict verdict, Instant since);
 
 	// 접수 제한(JudgeAdmission)용. status 인덱스로 센다.
 	long countByStatusIn(Collection<JudgeStatus> statuses);

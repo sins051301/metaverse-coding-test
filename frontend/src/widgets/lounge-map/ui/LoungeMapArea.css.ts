@@ -12,7 +12,7 @@ export const lounge = style({
 })
 
 export const panel = style({
-  width: '280px',
+  width: '240px',
   flex: 'none',
   display: 'flex',
   flexDirection: 'column',
@@ -47,6 +47,7 @@ export const spacer = style({
 })
 
 export const mapBox = style({
+  position: 'relative',
   flex: '1',
   minHeight: '0',
   selectors: {
@@ -100,7 +101,7 @@ export const keys = style({
 
 globalStyle(`${panel} ${mapBox}`, {
   flex: 'none',
-  height: '320px',
+  height: '272px',
 })
 
 globalStyle(`${iconButton} svg`, {
@@ -144,4 +145,17 @@ export const tab = style({
       color: vars.color.ink,
     },
   },
+})
+
+export const replaced = style({
+  position: 'absolute',
+  inset: '0',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: vars.space.sm,
+  background: `color-mix(in oklab, ${vars.color.paper2} 85%, transparent)`,
+  color: vars.color.ink,
+  fontWeight: '700',
 })
