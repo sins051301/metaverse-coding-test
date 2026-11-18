@@ -41,9 +41,6 @@ export function App() {
       <div className={styles.app}>
         <RouterProvider router={router} />
       </div>
-      <p className={styles.narrowNotice}>
-        넓은 화면에서 이용해 주세요. 가로 1280px 이상에서 열 수 있어요.
-      </p>
     </QueryClientProvider>
   )
 }

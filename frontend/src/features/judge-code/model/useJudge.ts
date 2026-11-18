@@ -13,6 +13,7 @@ import { loungeStore } from '@/entities/lounge/model/loungeStore'
 import { PROBLEM_LIST_QUERY_KEY } from '@/entities/problem/api/problemQueries'
 import { CURRENT_USER_QUERY_KEY } from '@/entities/user/api/userQueries'
 import { isHttpError } from '@/shared/api/httpClient'
+import { celebrate } from '@/shared/lib/celebrate'
 
 export type JudgeView =
   | { phase: 'idle' }
@@ -48,6 +49,7 @@ export function useJudge(problemId: number) {
       : null
   useEffect(() => {
     if (submittedVerdict === 'AC') {
+      celebrate()
       void queryClient.invalidateQueries({
         queryKey: PROBLEM_LIST_QUERY_KEY,
         exact: true,
