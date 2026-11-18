@@ -622,7 +622,7 @@ JPA 매핑은 `JsonNodeConverter`로 문자열 ↔ `JsonNode` 변환 (Hibernate 
 | 지도 자리 | `widgets/lounge-map/ui/LoungeMapArea.tsx` | 라운지 = 가운데 전체, 앉은 화면 = 왼쪽 패널(접기, [일어나기], ESC) |
 | 캔버스 + 툴팁 | `widgets/lounge-map/ui/LoungeMap.tsx` | Phaser 게임을 한 번만 만들고(동적 import), 그 위에 React로 `[F]` 툴팁 |
 | 장면 | `widgets/lounge-map/lib/LoungeScene.ts` | 방·책상·장식 배치, 이동·충돌, 근처 책상 찾기, 앉기·일어나기, 카메라 |
-| 지도 데이터 | `widgets/lounge-map/model/loungeMap.ts` | 320x180 도트, 책상 15개(3줄 x 5), 창문·전광판·러그·장식 좌표 |
+| 지도 데이터 | `widgets/lounge-map/model/loungeMap.ts` | 320x180 도트, 책상 30개(5줄 x 6, 가운데 통로), 창문·전광판·러그·장식 좌표 |
 | 고양이 도트 | `entities/avatar/lib/catSprite.ts` | 도트 템플릿 → 스프라이트 시트. 털색은 팔레트만 바꿈 |
 | 외형 | `entities/avatar/model/appearance.ts` | `{ coat }`. 꾸미기 아이템이 생기면 칸을 늘림 |
 | 공유 상태 | `entities/lounge/model/loungeStore.ts` | 화면 모드, 근처 책상, 앉은 책상, 지도 접힘 |
@@ -677,7 +677,7 @@ JPA 매핑은 `JsonNodeConverter`로 문자열 ↔ `JsonNode` 변환 (Hibernate 
 | 항목 | 선택 | 이유 (대안) |
 |---|---|---|
 | React 연결 | 공통 레이아웃에 지도 고정 + 외부 저장소 | 페이지마다 생성·제거(재로딩·재연결), 캔버스 옮겨 붙이기(React 밖 DOM 조작) |
-| 지도 정의 | 코드 데이터(`loungeMap.ts`) | 방 하나·책상 15개라 Tiled 편집기 없이 파일 하나로 보인다. 방이 늘면 Tiled JSON |
+| 지도 정의 | 코드 데이터(`loungeMap.ts`) | 방 하나·책상 30개라 Tiled 편집기 없이 파일 하나로 보인다. 방이 늘면 Tiled JSON |
 | 바닥·벽·책상·노트북 | 직접 그림 (목업 도트, 테마 토큰 색) | Kenney 실내 팩에 바닥·벽·노트북이 없고, 목업의 차콜·나무 팔레트와 맞춰야 함 |
 | 장식 | Kenney Roguelike Indoors (CC0) 화분·선반 | 출처 표기 의무 없음, 상업 이용 가능. `frontend/public/assets/CREDITS.md` |
 | 고양이 | 직접 그림 (목업 10x10 도트, 4방향·앉기) | 위에서 본 4방향 걷기가 있는 CC0 고양이를 찾지 못함 (옆모습뿐이거나 유료) |

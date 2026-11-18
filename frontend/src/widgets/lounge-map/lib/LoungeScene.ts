@@ -51,6 +51,7 @@ const PANEL_ZOOM = 2
 const BOARD_FONT_SIZE = 9
 const BOARD_MINIMUM_FONT_SIZE = 6
 const BOARD_PADDING = 3
+const BOARD_LATEST_SOLVE_MS = 30 * 60_000
 
 const TEXTURE = {
   room: 'room',
@@ -369,13 +370,20 @@ export class LoungeScene extends Phaser.Scene {
   }
 
   private updateBoard() {
-    const latest = rosterStore.getState().recentSolves[0]
-    const message = latest ? `${latest.nickname}님이 풀었어요` : ''
+    const { recentSolves, solvedTodayCount } = rosterStore.getState()
+    const latest = recentSolves[0]
+    const message =
+      latest && Date.now() - Date.parse(latest.solvedAt) < BOARD_LATEST_SOLVE_MS
+        ? `${latest.nickname}님이 풀었어요`
+        : solvedTodayCount > 0
+          ? `오늘 ${solvedTodayCount}명이 풀었어요`
+          : '오늘 첫 문제를 풀어 보세요'
     if (message === this.boardMessage) {
       return
     }
     this.boardMessage = message
     this.boardText.setText(message)
+    this.boardText.setFontSize(BOARD_FONT_SIZE)
     for (
       let fontSize = BOARD_FONT_SIZE;
       fontSize > BOARD_MINIMUM_FONT_SIZE &&
