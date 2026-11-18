@@ -19,6 +19,8 @@ const MINIMUM_GENERATED_TESTS = 5;
 const MINIMUM_SMALL_TESTS = 100;
 const MAX_CASE_BYTES = 200 * 1024;
 const MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+const HTML_TAG = /<\/?[a-zA-Z][a-zA-Z0-9]*(\s[^<>]*)?\/?>/g;
+const MARKDOWN_CODE = /```[\s\S]*?```|`[^`\n]*`/g;
 const MAX_MESSAGES_PER_KIND = 8;
 const DOUBLE_TOLERANCE = 1e-6;
 const INT_MIN = -(2 ** 31);
@@ -272,6 +274,13 @@ export async function verifyProblem(problem: TransformedProblem, crossCheck: Cro
     checks,
     tests,
   });
+
+  const htmlTags = [...new Set(problem.description.replace(MARKDOWN_CODE, '').match(HTML_TAG) ?? [])];
+  if (htmlTags.length > 0) {
+    errors.add('지문 HTML', `지문에 HTML 태그 ${htmlTags.join(', ')} 가 있습니다. 화면에 글자 그대로 보이므로 마크다운·유니코드(10⁻⁶)로 바꿔야 합니다`);
+  } else {
+    checks.push('지문 형식: HTML 태그 없음');
+  }
 
   const generated = await runInputGenerator(problem.generator, '테스트 생성기', errors);
   const small = await runInputGenerator(crossCheck.smallGenerator, '작은 입력 생성기', errors);
