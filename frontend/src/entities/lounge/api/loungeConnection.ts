@@ -5,6 +5,7 @@ import {
 } from '@/entities/avatar/model/appearance'
 import type {
   Direction,
+  JoinRequest,
   LoungeEvent,
   MoveRequest,
   PersonalMessage,
@@ -15,9 +16,11 @@ import {
   occupiedDeskIds,
   rosterStore,
 } from '@/entities/lounge/model/rosterStore'
+import { readStorage, writeStorage } from '@/shared/lib/storage'
 
 const MOVE_SEND_INTERVAL_MS = 100
 const RECONNECT_DELAY_MS = 3000
+const BROWSER_KEY_KEY = 'codingtest:v1:browserKey'
 const CHAT_REJECTION_NOTICE = {
   empty: '보낼 내용을 적어 주세요.',
   'too-long': '200자까지 보낼 수 있어요.',
@@ -35,6 +38,16 @@ let lastSentAt = 0
 let lastSentMoving = false
 let joinPending = false
 let reportedDeskId: number | null = null
+
+function readBrowserKey() {
+  const saved = readStorage(localStorage, BROWSER_KEY_KEY)
+  if (saved !== null) {
+    return saved
+  }
+  const created = crypto.randomUUID()
+  writeStorage(localStorage, BROWSER_KEY_KEY, created)
+  return created
+}
 
 function webSocketUrl() {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -58,12 +71,14 @@ function join() {
   joinPending = false
   const { seatedDeskId } = loungeStore.getState()
   reportedDeskId = seatedDeskId
-  publish('/app/lounge/join', {
+  const request: JoinRequest = {
     nickname: readGuestNickname(),
     coat: readSavedAppearance().coat,
     ...lastPosition,
     deskId: seatedDeskId,
-  })
+    browserKey: readBrowserKey(),
+  }
+  publish('/app/lounge/join', request)
 }
 
 function publishActivity() {
@@ -77,7 +92,12 @@ function onEvent(message: IMessage) {
     return
   }
   if (event.type === 'solved') {
-    rosterStore.recordSolve(event.avatarIds, event.solve, Date.now())
+    rosterStore.recordSolve(
+      event.avatarIds,
+      event.solve,
+      event.solvedTodayCount,
+      Date.now(),
+    )
     return
   }
   if (event.type === 'left') {
@@ -100,6 +120,7 @@ function onPersonal(message: IMessage) {
       personal.avatars,
       personal.recentSolves,
       personal.recentChats,
+      personal.solvedTodayCount,
     )
     if (activityTracker.get() !== 'idle') {
       publishActivity()
@@ -112,6 +133,10 @@ function onPersonal(message: IMessage) {
       moveToFreeDesk()
     }
     connectedListeners.forEach((listener) => listener())
+    return
+  }
+  if (personal.type === 'replaced') {
+    loungeConnection.yieldToOtherTab()
     return
   }
   if (personal.type === 'chat-rejected') {
@@ -133,7 +158,10 @@ function moveToFreeDesk() {
   }
 }
 
-const DESK_PREFERENCE = [7, 6, 8, 2, 12, 5, 9, 1, 3, 11, 13, 0, 4, 10, 14]
+const DESK_PREFERENCE = [
+  14, 15, 8, 9, 20, 21, 13, 16, 7, 10, 19, 22, 2, 3, 26, 27, 1, 4, 25, 28, 12,
+  17, 6, 11, 18, 23, 0, 5, 24, 29,
+]
 
 export function firstFreeDesk(): number | null {
   const occupied = occupiedDeskIds()
@@ -155,7 +183,7 @@ function syncSeatWithServer() {
 
 export const loungeConnection = {
   start() {
-    if (client) {
+    if (client || rosterStore.getState().replaced) {
       return
     }
     const unsubscribeSeat = loungeStore.subscribe(syncSeatWithServer)
@@ -197,7 +225,12 @@ export const loungeConnection = {
   },
   restart() {
     loungeConnection.stop()
+    rosterStore.setReplaced(false)
     loungeConnection.start()
+  },
+  yieldToOtherTab() {
+    loungeConnection.stop()
+    rosterStore.setReplaced(true)
   },
   reportPosition(position: Position, moving: boolean) {
     lastPosition = position

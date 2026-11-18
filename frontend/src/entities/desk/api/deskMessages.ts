@@ -19,7 +19,10 @@ export type DeskMessage =
       kind: DeskPayloadKind
       payload: string
     }
-  | { type: 'closed' | 'not-found' | 'owner-away'; roomId: string }
+  | {
+      type: 'closed' | 'paused' | 'not-found' | 'owner-away'
+      roomId: string
+    }
   | { type: 'member-joined'; roomId: string; memberId: string }
   | { type: 'spectators'; roomId: string; spectatorCount: number }
   | {

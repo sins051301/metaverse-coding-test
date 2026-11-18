@@ -37,6 +37,7 @@ export type JoinRequest = {
   y: number
   direction: Direction
   deskId: number | null
+  browserKey: string
 }
 
 export type MoveRequest = {
@@ -51,7 +52,12 @@ export type LoungeEvent =
       type: 'joined' | 'moved' | 'sat' | 'stood' | 'left' | 'activity'
       avatar: AvatarState
     }
-  | { type: 'solved'; avatarIds: string[]; solve: RecentSolve }
+  | {
+      type: 'solved'
+      avatarIds: string[]
+      solve: RecentSolve
+      solvedTodayCount: number
+    }
   | { type: 'chat'; chat: ChatMessage }
 
 export type PersonalMessage =
@@ -61,6 +67,8 @@ export type PersonalMessage =
       avatars: AvatarState[]
       recentSolves: RecentSolve[]
       recentChats: ChatMessage[]
+      solvedTodayCount: number
     }
   | { type: 'sit-rejected'; deskId: number }
   | { type: 'chat-rejected'; reason: 'empty' | 'too-long' | 'too-fast' }
+  | { type: 'replaced' }
