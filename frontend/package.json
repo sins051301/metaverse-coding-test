@@ -17,6 +17,7 @@
     "@tanstack/react-query": "^5.107.1",
     "@vanilla-extract/css": "1.21.3",
     "@vanilla-extract/recipes": "0.5.7",
+    "canvas-confetti": "1.9.4",
     "monaco-editor": "^0.57.0",
     "phaser": "4.2.1",
     "react": "^19.3.1",
@@ -30,6 +31,7 @@
     "yjs": "13.6.33"
   },
   "devDependencies": {
+    "@types/canvas-confetti": "1.9.0",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
