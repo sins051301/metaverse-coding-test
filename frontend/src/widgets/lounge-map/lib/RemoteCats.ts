@@ -70,7 +70,7 @@ export class RemoteCats {
   setNameResolution(resolution: number) {
     for (const cat of this.cats.values()) {
       cat.nameTag.setResolution(resolution)
-      cat.speech.setResolution(resolution)
+      cat.speechText.setResolution(resolution)
     }
   }
 
@@ -83,7 +83,7 @@ export class RemoteCats {
       avatar.y,
     )
     view.nameTag.setResolution(zoom * window.devicePixelRatio)
-    view.speech.setResolution(zoom * window.devicePixelRatio)
+    view.speechText.setResolution(zoom * window.devicePixelRatio)
     const cat = { ...view, avatar }
     this.cats.set(avatar.id, cat)
     return cat

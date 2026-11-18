@@ -454,7 +454,7 @@ export class LoungeScene extends Phaser.Scene {
     }
     const resolution = camera.zoom * window.devicePixelRatio
     this.nameTag.setResolution(resolution)
-    this.myView.speech.setResolution(resolution)
+    this.myView.speechText.setResolution(resolution)
     this.boardText.setResolution(resolution)
     this.remoteCats.setNameResolution(resolution)
   }

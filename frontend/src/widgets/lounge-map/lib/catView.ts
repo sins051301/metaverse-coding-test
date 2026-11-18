@@ -19,9 +19,12 @@ import {
   drawSolved,
   drawStar,
   drawZ,
+  drawSpeechBox,
   drawSpeechTail,
   SOLVED_HEIGHT,
   SOLVED_WIDTH,
+  SPEECH_BOX_SIZE,
+  SPEECH_BOX_SLICE,
   SPEECH_TAIL_HEIGHT,
   SPEECH_TAIL_WIDTH,
   STAR_HEIGHT,
@@ -86,11 +89,13 @@ export type CatView = {
   z: Phaser.GameObjects.Image
   star: Phaser.GameObjects.Image
   solved: Phaser.GameObjects.Image
-  speech: Phaser.GameObjects.Text
-  speechTail: Phaser.GameObjects.Image
+  speech: Phaser.GameObjects.Container
+  speechBox: Phaser.GameObjects.NineSlice
+  speechText: Phaser.GameObjects.Text
 }
 
 const EFFECT = {
+  speechBox: 'fx-speech-box',
   speechTail: 'fx-speech-tail',
   bubble: (dotIndex: number) => `fx-bubble-${dotIndex}`,
   failure: 'fx-failure',
@@ -128,6 +133,9 @@ function ensureEffectTextures(scene: Phaser.Scene) {
   canvas(EFFECT.solved, SOLVED_WIDTH, SOLVED_HEIGHT, (context) =>
     drawSolved(context, tokenColor),
   )
+  canvas(EFFECT.speechBox, SPEECH_BOX_SIZE, SPEECH_BOX_SIZE, (context) =>
+    drawSpeechBox(context, tokenColor),
+  )
   canvas(EFFECT.speechTail, SPEECH_TAIL_WIDTH, SPEECH_TAIL_HEIGHT, (context) =>
     drawSpeechTail(context, tokenColor),
   )
@@ -138,7 +146,12 @@ const NAME_TAG_Y = -FRAME_SIZE + 2 - NAME_TAG_GAP
 const BUBBLE_POSITION = { x: -16, y: HEAD_TOP }
 const Z_POSITION = { x: 5, y: HEAD_TOP + 1 }
 const STAR_BOTTOM = NAME_TAG_Y - 10
+const SPEECH_TIP_Y = NAME_TAG_Y - 7
 const SPEECH_WRAP_WIDTH = 52
+const SPEECH_PADDING = { x: 3, y: 2 }
+const SPEECH_POP_MS = 180
+const SPEECH_FADE_MS = 350
+const SPEECH_POP_START_SCALE = 0.4
 export const SPEECH_SHOW_MS = 4_000
 
 export function createCatView(
@@ -176,33 +189,37 @@ export function createCatView(
     .image(0, NAME_TAG_Y + 2, EFFECT.solved)
     .setOrigin(0.5, 1)
     .setVisible(false)
+  const speechBox = scene.add
+    .nineslice(
+      0,
+      0,
+      EFFECT.speechBox,
+      undefined,
+      SPEECH_BOX_SIZE,
+      SPEECH_BOX_SIZE,
+      SPEECH_BOX_SLICE,
+      SPEECH_BOX_SLICE,
+      SPEECH_BOX_SLICE,
+      SPEECH_BOX_SLICE,
+    )
+    .setOrigin(0, 1)
   const speechTail = scene.add
-    .image(0, STAR_BOTTOM, EFFECT.speechTail)
-    .setOrigin(0.5, 1)
-    .setVisible(false)
-  const speech = scene.add
-    .text(0, STAR_BOTTOM - SPEECH_TAIL_HEIGHT, '', {
+    .image(-Math.floor(SPEECH_TAIL_WIDTH / 2), 0, EFFECT.speechTail)
+    .setOrigin(0, 1)
+  const speechText = scene.add
+    .text(0.5, 0, '', {
       fontFamily: 'Jua, sans-serif',
       fontSize: '5px',
       color: tokenColor(vars.color.tagInk),
-      backgroundColor: tokenColor(vars.map.frame),
-      padding: { x: 2, y: 1 },
       wordWrap: { width: SPEECH_WRAP_WIDTH, useAdvancedWrap: true },
       align: 'center',
     })
-    .setOrigin(0.5, 1)
+    .setOrigin(0.5, 0)
+  const speech = scene.add
+    .container(0, SPEECH_TIP_Y, [speechBox, speechTail, speechText])
     .setVisible(false)
   const container = scene.add
-    .container(x, y, [
-      sprite,
-      nameTag,
-      bubble,
-      z,
-      star,
-      solved,
-      speechTail,
-      speech,
-    ])
+    .container(x, y, [sprite, nameTag, bubble, z, star, solved, speech])
     .setDepth(y)
   return {
     container,
@@ -213,8 +230,44 @@ export function createCatView(
     star,
     solved,
     speech,
-    speechTail,
+    speechBox,
+    speechText,
   }
+}
+
+function fitSpeechBox(view: CatView, text: string) {
+  view.speechText.setText(text)
+  const oddWidth =
+    Math.ceil(view.speechText.width / 2) * 2 + 1 + SPEECH_PADDING.x * 2
+  const height = Math.ceil(view.speechText.height) + SPEECH_PADDING.y * 2
+  const boxBottom = -(SPEECH_TAIL_HEIGHT - 1)
+  view.speechBox
+    .setSize(oddWidth, height)
+    .setPosition(-(oddWidth - 1) / 2, boxBottom)
+  view.speechText.setY(boxBottom - height + SPEECH_PADDING.y)
+}
+
+function easeOutBack(progress: number) {
+  const overshoot = 1.70158
+  const shifted = progress - 1
+  return 1 + (overshoot + 1) * shifted ** 3 + overshoot * shifted ** 2
+}
+
+function applySpeech(view: CatView, speech: Speech | null) {
+  view.speech.setVisible(speech !== null)
+  if (speech === null) return
+  if (view.speechText.text !== speech.text) {
+    fitSpeechBox(view, speech.text)
+  }
+  const popScale =
+    speech.ageMs < SPEECH_POP_MS
+      ? SPEECH_POP_START_SCALE +
+        (1 - SPEECH_POP_START_SCALE) * easeOutBack(speech.ageMs / SPEECH_POP_MS)
+      : 1
+  const remainingMs = SPEECH_SHOW_MS - speech.ageMs
+  view.speech
+    .setScale(popScale)
+    .setAlpha(Math.min(1, remainingMs / SPEECH_FADE_MS))
 }
 
 const EFFECT_STEP_MS = 450
@@ -227,15 +280,17 @@ export type CatLook = {
   mine: boolean
   solved: boolean
   failed: boolean
-  speech: string | null
+  speech: Speech | null
 }
+
+type Speech = { text: string; ageMs: number }
 
 export function recentSpeech(
   lastChat: { text: string; at: number } | undefined,
   now: number,
-) {
+): Speech | null {
   return lastChat !== undefined && now - lastChat.at < SPEECH_SHOW_MS
-    ? lastChat.text
+    ? { text: lastChat.text, ageMs: now - lastChat.at }
     : null
 }
 
@@ -258,16 +313,12 @@ export function applyCatLook(view: CatView, look: CatLook, time: number) {
   view.z.setVisible(napping).setY(Z_POSITION.y - (step % 2))
   view.solved.setVisible(look.mine && look.solved)
   view.nameTag.setVisible(!(look.mine && look.solved))
-  if (look.speech !== null && view.speech.text !== look.speech) {
-    view.speech.setText(look.speech)
-  }
-  view.speech.setVisible(look.speech !== null)
-  view.speechTail.setVisible(look.speech !== null)
-  const starLift =
-    look.speech === null ? 0 : view.speech.height + SPEECH_TAIL_HEIGHT + 1
-  view.star
-    .setVisible(!look.mine && look.solved)
-    .setY(STAR_BOTTOM - starLift - (step % 2))
+  applySpeech(view, look.speech)
+  const starBottom =
+    look.speech === null
+      ? STAR_BOTTOM
+      : SPEECH_TIP_Y - (SPEECH_TAIL_HEIGHT - 1) - view.speechBox.height - 1
+  view.star.setVisible(!look.mine && look.solved).setY(starBottom - (step % 2))
 }
 
 export function seatPosition(desk: Desk) {
