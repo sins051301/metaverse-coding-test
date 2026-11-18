@@ -171,7 +171,7 @@ class LoungeWebSocketTest {
 		JsonNode solved = member.awaitEventOfType("solved");
 		assertThat(solved.path("avatarIds").valueStream().map(JsonNode::asString).toList()).containsExactly(memberId);
 		assertThat(solved.path("solve").path("nickname").asString()).isEqualTo(user.getNickname());
-		assertThat(solved.path("solve").path("problemTitle").asString()).isEqualTo("짝수는 몇 개일까");
+		assertThat(solved.path("solve").path("problemTitle").asString()).isEqualTo("짝수 번호표 세기");
 		int solvedTodayCount = solved.path("solvedTodayCount").asInt();
 		assertThat(solvedTodayCount).as("오늘 푼 회원 수에 방금 푼 회원이 들어간다").isPositive();
 
