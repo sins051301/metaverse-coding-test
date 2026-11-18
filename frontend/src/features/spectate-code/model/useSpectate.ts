@@ -33,6 +33,7 @@ export type SpectateState =
       documentVersion: number
     }
   | { phase: 'closed' }
+  | { phase: 'paused' }
   | { phase: 'not-found' }
 
 type Session = { doc: Y.Doc; awareness: Awareness }
@@ -106,8 +107,8 @@ export function useSpectate(routeRoomId: string) {
             ? { ...previous, ownerAway: true }
             : previous,
         )
-      } else if (message.type === 'closed') {
-        setState({ phase: 'closed' })
+      } else if (message.type === 'closed' || message.type === 'paused') {
+        setState({ phase: message.type })
         setPair('none')
       } else if (message.type === 'not-found') {
         setState({ phase: 'not-found' })

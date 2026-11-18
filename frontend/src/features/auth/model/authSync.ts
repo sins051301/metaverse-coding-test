@@ -6,12 +6,16 @@ import { isHttpError } from '@/shared/api/httpClient'
 
 const channel = new BroadcastChannel('codingtest:v1:auth')
 
-export function refreshAuthState(queryClient: QueryClient) {
+function refreshAuthQueries(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY })
   void queryClient.invalidateQueries({
     queryKey: PROBLEM_LIST_QUERY_KEY,
     exact: true,
   })
+}
+
+export function refreshAuthState(queryClient: QueryClient) {
+  refreshAuthQueries(queryClient)
   loungeConnection.restart()
 }
 
@@ -20,7 +24,10 @@ export function announceAuthChange() {
 }
 
 export function listenAuthChangeElsewhere(queryClient: QueryClient) {
-  const onMessage = () => refreshAuthState(queryClient)
+  const onMessage = () => {
+    refreshAuthQueries(queryClient)
+    loungeConnection.yieldToOtherTab()
+  }
   channel.addEventListener('message', onMessage)
   return () => channel.removeEventListener('message', onMessage)
 }
