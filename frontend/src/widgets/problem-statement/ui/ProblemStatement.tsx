@@ -1,10 +1,13 @@
 import { memo } from 'react'
 import Markdown from 'react-markdown'
+import type { Options } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ProblemDetail } from '@/entities/problem/api/problemQueries'
 import * as styles from './ProblemStatement.css'
 
-const REMARK_PLUGINS = [remarkGfm]
+const REMARK_PLUGINS: Options['remarkPlugins'] = [
+  [remarkGfm, { singleTilde: false }],
+]
 const MILLISECONDS_PER_SECOND = 1000
 
 export const ProblemStatement = memo(function ProblemStatement({
