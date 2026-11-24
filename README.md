@@ -499,8 +499,8 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 - 백엔드: Micrometer 가 지표를 만들고 Actuator 가 `/actuator/prometheus` 로 내놓는다 (`/actuator/health` 와 함께 인증 없이 허용. 운영에서는 Caddy 가 `/actuator` 를 넘기지 않아 외부에서 닿지 않는다).
 - 채점 전용 지표: `judge_slots_waiting`(대기 수), `judge_slots_in_use`·`judge_slots_capacity`(채점 중·최대), `judge_slot_wait_seconds`·`judge_slot_run_seconds`(자리 대기·채점 시간 히스토그램, p95 계산용), `judge_results_total{mode, language, verdict}`, `judge_failures_total{mode}`. 라벨에는 종류가 정해진 값만 쓴다(제출 id 같은 값을 넣으면 시계열이 무한히 늘어난다).
 - Spring 자동 지표: JVM 힙·스레드, HikariCP 커넥션, HTTP 응답 시간(히스토그램 켬), CPU.
-- Prometheus 가 5초마다 가져가 저장하고, Grafana 대시보드 "코딩 테스트 채점"(`monitoring/grafana/dashboards/judge.json`)이 채점·API·서버 자원·DB 를 보여 준다. 패널마다 ⓘ 에 "무엇 / 정상 / 이상 신호 / 출처" 설명이 있다. DB 패널은 SELECT 권한만 있는 `grafana_reader` 계정으로 MySQL 을 직접 조회한다.
-- 로컬은 `docker compose up -d` 후 `http://localhost:3001`, 운영은 SSH 터널로 본다 ([`docs/deployment.md`](docs/deployment.md) 3-5).
+- Prometheus 가 5초마다 가져가 저장하고, Grafana 대시보드 "코딩 테스트 채점"(`monitoring/grafana/dashboards/judge.json`)이 채점·API·서버 자원을 보여 준다. 패널마다 ⓘ 에 "무엇 / 정상 / 이상 신호 / 출처" 설명이 있다.
+- 로컬은 `docker compose up -d` 후 `http://localhost:3001`. 운영은 서버 Prometheus 가 대시보드에 쓰는 지표만 Grafana Cloud 로 보내고(remote_write), 대시보드와 서버 다운·사이트 접속 실패 메일 알림은 Cloud 에 있다 ([`docs/deployment.md`](docs/deployment.md) 3-5).
 - `JudgeApiTest#limitsUnfinishedJudgingPerUser`: 끝나지 않은 건이 1개면 다음 제출·실행은 409, 끝나면 다시 받는다.
 - `JudgeApiTest#rejectsWhenQueueIsFull`: 전체 `PENDING`이 50건이면 처음 제출하는 유저도 429.
 - `DockerClientTimeoutTest` (Docker 불필요): **멈춘 Docker 엔진 흉내** — 테스트 안에서 `ServerSocket`을 열어 연결은 받아 주되 응답을 한 바이트도 보내지 않는 가짜 서버를 만들고, Docker 클라이언트를 그 주소(`tcp://127.0.0.1:<포트>`)로 연결한다. 응답 시간 제한 1초를 걸면 `createContainerCmd`가 약 1초 뒤 예외로 끝나는지 본다. 시간 제한이 동작하지 않으면 테스트가 멈추므로 테스트 자체에도 10초 상한(`assertTimeoutPreemptively`)을 걸었다. 응답 시간 제한을 1시간으로 바꾸면 이 상한에 걸려 실패하는 것도 확인했다(테스트가 정말 시간 제한을 잡아내는지 거꾸로 검증).
