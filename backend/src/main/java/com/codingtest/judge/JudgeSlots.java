@@ -1,8 +1,12 @@
 package com.codingtest.judge;
 
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -20,10 +24,34 @@ import java.util.concurrent.Semaphore;
 @Component
 public class JudgeSlots {
 
-	private final Semaphore semaphore;
+	// 기다림·채점 시간이 수십 초~수 분까지 갈 수 있어(TLE 코드가 자리를 잡으면) 히스토그램 구간을 기본값(30초)보다 넓힌다
+	private static final Duration MAXIMUM_EXPECTED_DURATION = Duration.ofMinutes(5);
 
-	public JudgeSlots(@Value("${judge.concurrency}") int concurrency) {
+	private final Semaphore semaphore;
+	private final Timer waitTimer;
+	private final Timer runTimer;
+
+	public JudgeSlots(@Value("${judge.concurrency}") int concurrency, MeterRegistry meterRegistry) {
 		this.semaphore = new Semaphore(concurrency, true);
+		Gauge.builder("judge.slots.waiting", semaphore, Semaphore::getQueueLength)
+				.description("채점 자리를 기다리며 PENDING 으로 멈춰 있는 제출·실행 수 (대기열 길이)")
+				.register(meterRegistry);
+		Gauge.builder("judge.slots.in.use", semaphore, slots -> concurrency - slots.availablePermits())
+				.description("지금 채점 중인(컨테이너를 쓰는) 제출·실행 수. 최대 judge.concurrency")
+				.register(meterRegistry);
+		Gauge.builder("judge.slots.capacity", () -> concurrency)
+				.description("동시에 채점할 수 있는 최대 수 (judge.concurrency)")
+				.register(meterRegistry);
+		this.waitTimer = Timer.builder("judge.slot.wait")
+				.description("접수 뒤 채점 자리를 받기까지 기다린 시간")
+				.publishPercentileHistogram()
+				.maximumExpectedValue(MAXIMUM_EXPECTED_DURATION)
+				.register(meterRegistry);
+		this.runTimer = Timer.builder("judge.slot.run")
+				.description("자리를 받은 뒤 채점(컨테이너 실행 + 결과 저장)에 걸린 시간")
+				.publishPercentileHistogram()
+				.maximumExpectedValue(MAXIMUM_EXPECTED_DURATION)
+				.register(meterRegistry);
 	}
 
 	/**
@@ -35,9 +63,11 @@ public class JudgeSlots {
 	 * @throws InterruptedException 기다리는 동안 스레드가 중단됨 (서버 종료 등). 이때는 허가증을 받지 않았으므로 돌려주지도 않는다.
 	 */
 	public void runInSlot(Runnable judging) throws InterruptedException {
+		Timer.Sample waiting = Timer.start();
 		semaphore.acquire();
+		waiting.stop(waitTimer);
 		try {
-			judging.run();
+			runTimer.record(judging);
 		} finally {
 			semaphore.release();
 		}

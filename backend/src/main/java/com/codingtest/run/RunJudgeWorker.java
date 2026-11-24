@@ -7,6 +7,8 @@ import com.codingtest.judge.JudgeResult;
 import com.codingtest.judge.JudgeSlots;
 import com.codingtest.problem.Problem;
 import com.codingtest.problem.ProblemService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -32,15 +34,21 @@ public class RunJudgeWorker {
 	private final Judge judge;
 	private final JudgeSlots judgeSlots;
 	private final TransactionTemplate transactionTemplate;
+	private final Counter failures;
 
 	public RunJudgeWorker(RunRepository runRepository, RunTestResultRepository runTestResultRepository,
-			ProblemService problemService, Judge judge, JudgeSlots judgeSlots, TransactionTemplate transactionTemplate) {
+			ProblemService problemService, Judge judge, JudgeSlots judgeSlots, TransactionTemplate transactionTemplate,
+			MeterRegistry meterRegistry) {
 		this.runRepository = runRepository;
 		this.runTestResultRepository = runTestResultRepository;
 		this.problemService = problemService;
 		this.judge = judge;
 		this.judgeSlots = judgeSlots;
 		this.transactionTemplate = transactionTemplate;
+		this.failures = Counter.builder("judge.failures")
+				.description("Docker 오류 등 시스템 문제로 FAILED 가 된 제출·실행 수 (오답·컴파일 에러는 포함하지 않음)")
+				.tag("mode", JudgeMode.RUN.name())
+				.register(meterRegistry);
 	}
 
 	@Async(JudgeExecutorConfiguration.JUDGE_EXECUTOR)
@@ -74,6 +82,7 @@ public class RunJudgeWorker {
 			});
 		} catch (RuntimeException exception) {
 			log.error("실행 {} 채점 실패", runId, exception);
+			failures.increment();
 			transactionTemplate.executeWithoutResult(status ->
 					runRepository.findById(runId).orElseThrow().fail());
 		}

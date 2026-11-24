@@ -9,6 +9,8 @@ import com.codingtest.judge.Verdict;
 import com.codingtest.problem.Problem;
 import com.codingtest.problem.ProblemService;
 import com.codingtest.user.UserSolvedProblemRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -50,10 +52,12 @@ public class SubmissionJudgeWorker {
 	private final JudgeSlots judgeSlots;
 	private final TransactionTemplate transactionTemplate;
 	private final ApplicationEventPublisher eventPublisher;
+	private final Counter failures;
 
 	public SubmissionJudgeWorker(SubmissionRepository submissionRepository, SubmissionTestResultRepository submissionTestResultRepository,
 			UserSolvedProblemRepository userSolvedProblemRepository, ProblemService problemService, Judge judge,
-			JudgeSlots judgeSlots, TransactionTemplate transactionTemplate, ApplicationEventPublisher eventPublisher) {
+			JudgeSlots judgeSlots, TransactionTemplate transactionTemplate, ApplicationEventPublisher eventPublisher,
+			MeterRegistry meterRegistry) {
 		this.submissionRepository = submissionRepository;
 		this.submissionTestResultRepository = submissionTestResultRepository;
 		this.userSolvedProblemRepository = userSolvedProblemRepository;
@@ -62,6 +66,10 @@ public class SubmissionJudgeWorker {
 		this.judgeSlots = judgeSlots;
 		this.transactionTemplate = transactionTemplate;
 		this.eventPublisher = eventPublisher;
+		this.failures = Counter.builder("judge.failures")
+				.description("Docker 오류 등 시스템 문제로 FAILED 가 된 제출·실행 수 (오답·컴파일 에러는 포함하지 않음)")
+				.tag("mode", JudgeMode.SUBMIT.name())
+				.register(meterRegistry);
 	}
 
 	@Async(JudgeExecutorConfiguration.JUDGE_EXECUTOR)
@@ -106,6 +114,7 @@ public class SubmissionJudgeWorker {
 		} catch (RuntimeException exception) {
 			// 오답·컴파일 에러는 예외가 아니라 정상 결과(DONE)다. 여기 오는 건 Docker 가 응답하지 않는 등 시스템 문제다.
 			log.error("제출 {} 채점 실패", submissionId, exception);
+			failures.increment();
 			transactionTemplate.executeWithoutResult(status ->
 					submissionRepository.findById(submissionId).orElseThrow().fail());
 			return;
