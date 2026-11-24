@@ -82,7 +82,7 @@ tasks.withType<Test> {
 
 tasks.test {
 	useJUnitPlatform {
-		excludeTags("docker", "concurrency")
+		excludeTags("docker", "concurrency", "benchmark")
 	}
 }
 
@@ -112,5 +112,24 @@ tasks.register<Test>("concurrencyTest") {
 	}
 	// -PjudgeConcurrency=N 으로 동시 채점 수를 바꿔 같은 테스트를 비교한다. 없으면 application.properties 값.
 	providers.gradleProperty("judgeConcurrency").orNull?.let { systemProperty("judge.concurrency", it) }
+	// -PjudgeVirtualThreads=false 로 채점 작업 스레드를 플랫폼 스레드로 바꿔 비교한다. NMT 는 스레드 스택 메모리를 재려고 켠다.
+	providers.gradleProperty("judgeVirtualThreads").orNull?.let { systemProperty("judge.virtual-threads", it) }
+	jvmArgs("-XX:NativeMemoryTracking=summary")
 	dependsOn(buildJudgeImages)
+}
+
+// 채점 실행기 구조(작업마다 스레드 + 세마포어)만 떼어 Docker 없이 작업 수를 늘려 가며 가상/플랫폼 스레드를 비교한다.
+tasks.register<Test>("threadBenchmark") {
+	group = "verification"
+	description = "채점 실행기를 가상 스레드와 플랫폼 스레드로 바꿔 작업 수별 스레드 수·메모리·시간을 측정한다."
+	testClassesDirs = sourceSets.test.get().output.classesDirs
+	classpath = sourceSets.test.get().runtimeClasspath
+	useJUnitPlatform {
+		includeTags("benchmark")
+	}
+	testLogging {
+		showStandardStreams = true
+	}
+	providers.gradleProperty("judgeVirtualThreads").orNull?.let { systemProperty("judge.virtual-threads", it) }
+	jvmArgs("-XX:NativeMemoryTracking=summary")
 }
