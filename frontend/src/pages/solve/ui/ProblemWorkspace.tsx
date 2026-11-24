@@ -213,7 +213,6 @@ export function ProblemWorkspace({
               >
                 <JudgeResultPanel
                   view={view}
-                  parameters={problem.parameters}
                   timeLimitMs={problem.timeLimitMs}
                   onRetry={() =>
                     judgeCurrentCode(view.phase === 'idle' ? 'run' : view.mode)
