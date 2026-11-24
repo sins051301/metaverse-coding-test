@@ -201,11 +201,12 @@ coding-test/
 필요: JDK 25, Docker Desktop(실행 중)
 
 ```bash
-docker compose up -d    # 로컬 MySQL (localhost:3307, DB·계정·비밀번호 모두 coding_test)
+docker compose up -d    # 로컬 MySQL (localhost:3307, DB·계정·비밀번호 모두 coding_test) + 모니터링 (Prometheus :9090, Grafana :3001 admin/admin)
 cd backend
 ./gradlew test          # 일반 테스트 (Docker 불필요)
 ./gradlew judgeTest     # 채점 이미지 빌드 + 실제 컨테이너로 샌드박스·DB 테스트 (MySQL은 Testcontainers가 따로 띄움)
-./gradlew concurrencyTest   # 제출 10건 동시 채점 측정 (무거워서 judgeTest와 분리). -PjudgeConcurrency=2 로 동시 채점 수를 바꿔 비교
+./gradlew concurrencyTest   # 제출 10건 동시 채점 측정 (무거워서 judgeTest와 분리). -PjudgeConcurrency=2 로 동시 채점 수를, -PjudgeVirtualThreads=false 로 채점 스레드 종류를 바꿔 비교
+./gradlew threadBenchmark   # 채점 실행기 구조만 떼어 작업 50·1,000·10,000개에서 가상/플랫폼 스레드 비교 (Docker 불필요, -PjudgeVirtualThreads=false)
 ./gradlew buildJudgeImages   # 채점 이미지만 빌드
 ./gradlew bootRun       # 서버 실행 (시작할 때 Flyway가 테이블과 seed 문제를 만듦, 아래 환경 변수 필요)
 ```
@@ -453,8 +454,53 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 - **N=8이 23.6초로 튄 것은 측정 잡음으로 본다**: N=10(10.1초)보다 느릴 이유가 없고, 각 1회 측정이라 노트북의 다른 작업·절전·Docker VM 상태에 크게 흔들린다. 건별 *최소*가 14초인 것은 첫 채점부터 느렸다는 뜻이라 대기열 문제가 아니다.
 - 그래서 이 표로 "최적 N"을 정하지 않는다. 배포 서버에서 N별로 여러 번(3회 이상) 재서 중간값으로 정한다 (`docs/tuning.md`).
 
+#### 가상 스레드 이득 측정 (2026-11-23, 16코어·Docker VM 8GB 노트북, 각 3회)
+
+질문: 채점 작업 스레드를 가상 스레드로 만든 것이 실제로 이득인가. 같은 `SimpleAsyncTaskExecutor`에서 `setVirtualThreads(true/false)`(설정 `judge.virtual-threads`)만 바꿔 비교했다.
+
+**잰 방법**: 운영 코드에 로그를 넣지 않고, 테스트 안에서 JVM 이 스스로 집계하는 값을 읽었다 (`JvmThreadMetrics`).
+| 지표 | 읽은 곳 | 의미 |
+|---|---|---|
+| 플랫폼 스레드 수 | `ThreadMXBean.getThreadCount()` | OS 스레드 수. 가상 스레드는 세지 않는다 |
+| 스레드 스택 메모리 | NMT(`-XX:NativeMemoryTracking=summary`)의 `Thread` 항목 | 플랫폼 스레드 스택이 힙 밖에서 차지한 메모리. 예약/커밋을 따로 본다 |
+| 힙 | `MemoryMXBean` (GC 뒤) | 가상 스레드는 멈춘 동안 스택을 힙에 둬서 비용이 여기서 보인다 |
+
+**실험 1: 실제 채점** (`concurrencyTest`, 제출 10건 동시, 동시 채점 4, A·B 번갈아 3회)
+| | 가상 스레드 | 플랫폼 스레드 |
+|---|---|---|
+| 전체 시간 | 12.1 / 11.0 / 10.5초 | 12.8 / 10.8 / 16.9초 |
+| 플랫폼 스레드 최대 증가 | +37 | +44 ~ +47 |
+| 스레드 스택 커밋 최대 증가 | 3.2 ~ 3.4MB | 3.8 ~ 4.2MB |
+
+시간은 범위가 겹친다(16.9초는 한 번 튄 값). 차이는 OS 스레드 약 10개, 커밋 약 0.7MB로 컨테이너 1개(265MB)에 비하면 오차 수준이다. 힙은 같은 모드 안에서도 40~94MB로 흔들려 비교에 쓰지 않았다.
+
+**실험 2: 규모 키우기** (`threadBenchmark`, Docker 없이 같은 실행기·`JudgeSlots`로 작업 N개를 넘기고, 모두 대기 중인 순간을 잼)
+| 작업 수 | 가상 스레드 | 플랫폼 스레드 |
+|---|---|---|
+| 50 (운영 접수 상한) | 플랫폼 스레드 +17(캐리어, 한 번만), 스택 커밋 1.2MB, 넘기기 6ms | +50, 3.4MB, 6ms |
+| 1,000 | +0, 힙 +2.2MB, 넘기기 12~17ms | +1,000, 스택 커밋 67MB / 예약 1GB, 55~69ms |
+| 10,000 | +0, 힙 +20MB, 넘기기 34ms | +10,000, 스택 커밋 650MB / 예약 9.8GB, **2.0~2.7초** |
+
+**결론**
+- 접수 상한(50건) 안에서는 **실질적 이득이 없다**. 시간 차이는 없고 메모리 차이는 수 MB다. 채점 1건(수 초, 컨테이너 265MB) 앞에서 스레드 비용은 보이지 않는다.
+- 이득은 대기 작업이 **1,000건 이상**일 때부터 숫자로 드러난다 (플랫폼 스레드는 1개당 커밋 약 67KB·예약 1MB, 가상 스레드는 힙에 약 2KB).
+- 그래서 가상 스레드를 고른 근거는 성능이 아니라 구조다: 작업 1건 = 스레드 1개로 두고, 동시 실행 수는 세마포어, 대기열 길이는 DB 기반 접수 제한으로 나눠 관리한다. 대기열 상한을 크게 올릴 때의 여유는 덤이다.
+- 한계: 노트북(Windows) 3회 측정, 실험 2는 채점을 "기다리기"로 흉내 냄, 실험 1의 지표는 100ms 샘플링 최댓값.
+
+**공부할 개념: 스택과 힙, 예약과 커밋**
+- 스택: 스레드마다 하나씩 있는, 메서드 호출 기록(지역 변수·파라미터·돌아갈 위치)을 쌓는 메모리. 플랫폼 스레드의 스택은 힙 밖에서 OS가 따로 내준다. 힙은 `new`로 만든 객체가 사는, 모든 스레드가 같이 쓰는 메모리다.
+- 예약(reserved): 주소 범위만 잡아 둔 것(실제 RAM 안 씀). 커밋(committed): 그중 실제로 메모리를 받은 만큼. 플랫폼 스레드는 만들 때 `-Xss`(기본 1MB)만큼 예약하고, 호출이 쌓인 만큼만 커밋한다. 실제 부담은 커밋이다.
+- 가상 스레드는 멈출 때 지금 스택 프레임을 힙의 객체(stack chunk)로 복사해 두고 캐리어 스레드에서 내려온다. 1MB를 미리 잡지 않고 쌓인 만큼만 보관해서 가볍다.
+
 #### 검증
-- `JudgeSlotsTest` (Docker 불필요): 작업 8개를 넣어도 동시에 2개까지만 돈다 / 채점 중 예외가 나도 허가증을 돌려준다.
+- `JudgeSlotsTest` (Docker 불필요): 작업 8개를 넣어도 동시에 2개까지만 돈다 / 채점 중 예외가 나도 허가증을 돌려준다 / 자리를 쥔 동안 대기 수 지표가 1, 끝나면 0이고 대기·채점 시간이 기록된다.
+
+#### 지표와 모니터링 (Prometheus + Grafana)
+- 백엔드: Micrometer 가 지표를 만들고 Actuator 가 `/actuator/prometheus` 로 내놓는다 (`/actuator/health` 와 함께 인증 없이 허용. 운영에서는 Caddy 가 `/actuator` 를 넘기지 않아 외부에서 닿지 않는다).
+- 채점 전용 지표: `judge_slots_waiting`(대기 수), `judge_slots_in_use`·`judge_slots_capacity`(채점 중·최대), `judge_slot_wait_seconds`·`judge_slot_run_seconds`(자리 대기·채점 시간 히스토그램, p95 계산용), `judge_results_total{mode, language, verdict}`, `judge_failures_total{mode}`. 라벨에는 종류가 정해진 값만 쓴다(제출 id 같은 값을 넣으면 시계열이 무한히 늘어난다).
+- Spring 자동 지표: JVM 힙·스레드, HikariCP 커넥션, HTTP 응답 시간(히스토그램 켬), CPU.
+- Prometheus 가 5초마다 가져가 저장하고, Grafana 대시보드 "코딩 테스트 채점"(`monitoring/grafana/dashboards/judge.json`)이 채점·API·서버 자원·DB 를 보여 준다. 패널마다 ⓘ 에 "무엇 / 정상 / 이상 신호 / 출처" 설명이 있다. DB 패널은 SELECT 권한만 있는 `grafana_reader` 계정으로 MySQL 을 직접 조회한다.
+- 로컬은 `docker compose up -d` 후 `http://localhost:3001`, 운영은 SSH 터널로 본다 ([`docs/deployment.md`](docs/deployment.md) 3-5).
 - `JudgeApiTest#limitsUnfinishedJudgingPerUser`: 끝나지 않은 건 2개면 세 번째는 429, 끝나면 다시 받는다.
 - `JudgeApiTest#rejectsWhenQueueIsFull`: 전체 `PENDING`이 50건이면 처음 제출하는 유저도 429.
 - `DockerClientTimeoutTest` (Docker 불필요): **멈춘 Docker 엔진 흉내** — 테스트 안에서 `ServerSocket`을 열어 연결은 받아 주되 응답을 한 바이트도 보내지 않는 가짜 서버를 만들고, Docker 클라이언트를 그 주소(`tcp://127.0.0.1:<포트>`)로 연결한다. 응답 시간 제한 1초를 걸면 `createContainerCmd`가 약 1초 뒤 예외로 끝나는지 본다. 시간 제한이 동작하지 않으면 테스트가 멈추므로 테스트 자체에도 10초 상한(`assertTimeoutPreemptively`)을 걸었다. 응답 시간 제한을 1시간으로 바꾸면 이 상한에 걸려 실패하는 것도 확인했다(테스트가 정말 시간 제한을 잡아내는지 거꾸로 검증).

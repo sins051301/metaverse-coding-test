@@ -8,6 +8,8 @@
 | 동시 채점 수 | `judge.concurrency` | 4 | 노트북 Docker VM 7.5GB ÷ 컨테이너 한도 265MB ≈ 28개까지는 메모리가 버티지만, `javac`가 CPU를 많이 써서 동시 실행이 늘면 1건이 느려진다(8개 동시 시 +20%). 메모리 1GB·코어 4개만 쓰는 보수적인 값 | 배포 서버의 메모리·코어 수. `concurrencyTest -PjudgeConcurrency=N`으로 N을 바꿔 가며 전체 시간과 건별 시간 비교. 처리량이 더 이상 늘지 않는 N이 상한. 노트북 1회 측정(README 7장)은 N=8이 튀는 등 잡음이 커서 N마다 3회 이상 재서 중간값으로 볼 것. 제출 수도 10건보다 늘려(30건 등) 메모리 보호 효과가 드러나게 | 배포 서버를 정했을 때 |
 | 대기열 상한 | `judge.queue-capacity` | 50 | 허용 대기 60초 ÷ Java 1건 5.3초 × 동시 4건 ≈ 45 → 50 | 8단계 부하 테스트의 응답 시간 분포(p95, 끝까지 기다린 시간). 실제로 몇 초까지 기다려 주는지 | 8단계 |
 | 유저별 진행 중 개수 | `judge.per-user-unfinished-limit` | 2 | 제출 1 + 코드 실행 1을 동시에 걸어 둘 수 있게 | 실제 사용 패턴 (실행을 연달아 누르는지). 429가 정상 사용자에게 자주 뜨는지 로그로 확인 | 서비스 공개 후 |
+| 채점 스레드 종류 | `judge.virtual-threads` | `true` (가상 스레드) | 노트북 측정(README 7장 "가상 스레드 이득 측정"): 접수 상한 50건 안에서는 플랫폼 스레드와 시간·메모리 차이가 없고, 대기 1,000건 이상부터 가상 스레드가 확실히 가볍다. 구조(작업 1건 = 스레드 1개, 제한은 세마포어)를 위해 유지 | 대기열 상한을 수백 건 이상으로 올릴 때 `threadBenchmark` 를 배포 서버에서 다시 재 볼 것. `false` 는 비교 측정용 | 대기열 상한을 바꿀 때 |
+| 모니터링 수집 간격·보존 | `monitoring/prometheus/prometheus.yml`, `compose.prod.yaml` 의 `--storage.tsdb.retention.time` | 5초, 운영 15일 (로컬 7일) | 부하 테스트 때 대기열이 쌓였다 빠지는 모양을 보려면 짧아야 한다. 값 하나가 1~2바이트라 이 규모(시계열 수천 개)에서 15일이 1GB 안팎 | 배포 서버의 Prometheus 디스크 사용량 | 배포 후 |
 | Docker 연결 시간 제한 | `judge.docker.connection-timeout` | 3초 | 평소 연결은 수 ms. 엔진이 꺼져 있으면 빨리 실패하게 | 배포 환경에서 Docker 엔진이 원격(TCP)이면 네트워크 지연만큼 늘림 | 배포 시 |
 | Docker 응답 시간 제한 | `judge.docker.response-timeout` | 2분 | 가장 긴 컨테이너 시간(컴파일 10초 + 3초 × 테스트 11개 + 여유 15초 = 58초)보다 길어야 한다. 그 2배 | 테스트 수가 많거나 시간 제한이 긴 문제를 추가하면 다시 계산 (`SandboxRunner#containerTimeout`) | 문제 추가 시 |
 | attach 연결 시간 제한 | `SandboxRunner.ATTACH_TIMEOUT` | 10초 | 평소 0.1~0.2초 | 배포 서버 측정값 | 배포 시 |
