@@ -6,11 +6,48 @@ services:
       MYSQL_USER: coding_test
       MYSQL_PASSWORD: coding_test
       MYSQL_ROOT_PASSWORD: root
+      GRAFANA_MYSQL_PASSWORD: grafana_reader
     # 이 PC에 직접 설치한 MySQL이 3306을 쓰고 있어서 호스트 쪽은 3307로 연다.
     ports:
       - "3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./monitoring/mysql/create-grafana-reader.sh:/docker-entrypoint-initdb.d/create-grafana-reader.sh:ro
+
+  # 지표 수집. 로컬 백엔드는 Docker 밖(bootRun)에서 돌므로 backend 라는 이름을 호스트로 연결한다
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    extra_hosts:
+      - "backend:host-gateway"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  # 대시보드 http://localhost:3001 (admin / admin). 3000 은 프론트 개발 서버가 쓴다
+  grafana:
+    image: grafana/grafana:12.1.0
+    depends_on:
+      - prometheus
+      - mysql
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/judge.json
+      GRAFANA_MYSQL_PASSWORD: grafana_reader
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
 
 volumes:
   mysql-data:
+  prometheus-data:
+  grafana-data:
