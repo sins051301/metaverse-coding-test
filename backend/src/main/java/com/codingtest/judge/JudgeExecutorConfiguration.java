@@ -1,5 +1,6 @@
 package com.codingtest.judge;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
@@ -27,9 +28,9 @@ public class JudgeExecutorConfiguration {
 	public static final String JUDGE_EXECUTOR = "judgeExecutor";
 
 	@Bean(JUDGE_EXECUTOR)
-	TaskExecutor judgeExecutor() {
+	TaskExecutor judgeExecutor(@Value("${judge.virtual-threads}") boolean virtualThreads) {
 		SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("judge-");
-		executor.setVirtualThreads(true);
+		executor.setVirtualThreads(virtualThreads);
 		return executor;
 	}
 

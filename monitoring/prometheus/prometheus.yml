@@ -1,0 +1,11 @@
+# 로컬(compose.yaml)과 운영(compose.prod.yaml)이 같이 쓴다.
+# 운영은 같은 compose 네트워크의 backend 컨테이너, 로컬은 extra_hosts 로 backend 이름을 호스트(bootRun)에 연결한다.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["backend:8080"]

@@ -12,9 +12,12 @@ services:
       MYSQL_USER: coding_test
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD 를 .env 에 적으세요}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD 를 .env 에 적으세요}
-    # 포트를 열지 않는다. 같은 compose 네트워크의 backend 만 접속한다
+      # Grafana 읽기 전용 계정 비밀번호. 계정을 만드는 스크립트만 쓴다 (docs/deployment.md "모니터링")
+      GRAFANA_MYSQL_PASSWORD: ${GRAFANA_MYSQL_PASSWORD:?GRAFANA_MYSQL_PASSWORD 를 .env 에 적으세요}
+    # 포트를 열지 않는다. 같은 compose 네트워크의 backend·grafana 만 접속한다
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./monitoring/mysql/create-grafana-reader.sh:/docker-entrypoint-initdb.d/create-grafana-reader.sh:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
@@ -63,7 +66,45 @@ services:
       - caddy-data:/data
       - caddy-config:/config
 
+  # 모니터링. 두 포트 모두 서버 안(127.0.0.1)에만 열어 외부에서는 닿지 않는다. 내 PC 에서는 SSH 터널로 본다 (docs/deployment.md "모니터링")
+  # backend 의 /actuator 는 Caddy 가 넘기지 않으므로 같은 compose 네트워크의 Prometheus 만 가져갈 수 있다
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    depends_on:
+      - backend
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - mysql
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD 를 .env 에 적으세요}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/judge.json
+      GRAFANA_MYSQL_PASSWORD: ${GRAFANA_MYSQL_PASSWORD}
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
 volumes:
   mysql-data:
   caddy-data:
   caddy-config:
+  prometheus-data:
+  grafana-data:

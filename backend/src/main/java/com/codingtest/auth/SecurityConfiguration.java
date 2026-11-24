@@ -40,6 +40,8 @@ public class SecurityConfiguration {
 						// 라운지 WebSocket. 게스트도 들어와야 하고, 신원은 LoungeHandshakeHandler 가 쿠키로 직접 정한다
 						.requestMatchers(LOUNGE_WEB_SOCKET_PATH).permitAll()
 						.requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/error").permitAll()
+						// Prometheus 가 인증 없이 가져간다. 배포에서는 Caddy 가 /actuator 를 넘기지 않고 백엔드 포트도 열지 않아 외부에서 닿지 않는다
+						.requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
 						.anyRequest().authenticated())
 				.oauth2Login(login -> login.successHandler(loginSuccessHandler))
 				.oauth2ResourceServer(resourceServer -> resourceServer

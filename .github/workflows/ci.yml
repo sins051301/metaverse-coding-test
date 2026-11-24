@@ -60,6 +60,8 @@ jobs:
           GOOGLE_CLIENT_ID=ci-client-id
           GOOGLE_CLIENT_SECRET=ci-client-secret
           JWT_SECRET=${JWT_SECRET}
+          GRAFANA_ADMIN_PASSWORD=ci-grafana-admin
+          GRAFANA_MYSQL_PASSWORD=ciGrafanaReader
           EOF
       - name: 운영 구성 실행
         run: docker compose -f compose.prod.yaml --env-file ci.env up -d --build
@@ -79,6 +81,17 @@ jobs:
           echo "USER_ID=$(docker compose -f compose.prod.yaml --env-file ci.env exec -T mysql mysql -N -uroot -pci-root-password coding_test -e "SELECT id FROM users WHERE google_subject = 'ci-subject'")" >> "$GITHUB_ENV"
       - name: 제출 채점·경로 점검
         run: BASE_URL=http://localhost node deploy/smoke-test.mjs
+      - name: 모니터링 점검 (Prometheus 가 채점 지표를 모으고, Grafana 가 두 데이터 소스에 붙는지)
+        run: |
+          query='http://127.0.0.1:9090/api/v1/query?query=judge_results_total'
+          for attempt in $(seq 1 30); do
+            if curl -s "$query" | grep -q '"verdict":"AC"'; then break; fi
+            sleep 2
+          done
+          curl -s "$query" | grep -q '"verdict":"AC"'
+          curl -sf -u admin:ci-grafana-admin http://127.0.0.1:3001/api/datasources/uid/prometheus/health
+          curl -sf -u admin:ci-grafana-admin http://127.0.0.1:3001/api/datasources/uid/mysql/health
+          curl -sf -u admin:ci-grafana-admin http://127.0.0.1:3001/api/dashboards/uid/coding-test-judge > /dev/null
       - name: 실패 시 로그
         if: failure()
         run: docker compose -f compose.prod.yaml --env-file ci.env logs

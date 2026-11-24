@@ -66,6 +66,9 @@ class ConcurrentSubmissionTest {
 	@Value("${judge.concurrency}")
 	private int judgeConcurrency;
 
+	@Value("${judge.virtual-threads}")
+	private boolean judgeVirtualThreads;
+
 	@Test
 	@DisplayName("제출 10건(Java 5, JavaScript 5)을 동시에 보내면 모두 AC 로 끝난다 (걸린 시간을 출력)")
 	void judgesConcurrentSubmissions() throws Exception {
@@ -73,10 +76,12 @@ class ConcurrentSubmissionTest {
 				.mapToObj(index -> new JudgeApiClient(mockMvc, userService, tokenService, "concurrency-test-" + index))
 				.toList();
 
+		JvmThreadMetrics.Snapshot baseline = JvmThreadMetrics.snapshotAfterGc();
+		JvmThreadMetrics.PeakSampler sampler = new JvmThreadMetrics.PeakSampler();
 		Instant start = Instant.now();
 		List<JsonNode> results = new ArrayList<>();
 		// 가상 스레드로 유저 10명이 동시에 "제출 → 결과 기다리기"를 한다.
-		try (ExecutorService clients = Executors.newVirtualThreadPerTaskExecutor()) {
+		try (sampler; ExecutorService clients = Executors.newVirtualThreadPerTaskExecutor()) {
 			List<Future<JsonNode>> futures = new ArrayList<>();
 			for (int index = 0; index < SUBMISSION_COUNT; index++) {
 				JudgeApiClient user = users.get(index);
@@ -99,6 +104,8 @@ class ConcurrentSubmissionTest {
 		System.out.printf("[동시 제출 %d건, 동시 채점 수 %d] 전체 %.1f초, 건별(접수→채점 완료) 최소 %.1f초 / 중간 %.1f초 / 최대 %.1f초%n",
 				SUBMISSION_COUNT, judgeConcurrency, total.toMillis() / 1000.0,
 				judgeMillis.getFirst() / 1000.0, judgeMillis.get(judgeMillis.size() / 2) / 1000.0, judgeMillis.getLast() / 1000.0);
+		System.out.printf("[채점 작업 스레드: %s] 측정 중 최댓값 - 시작 전: %s%n",
+				judgeVirtualThreads ? "가상 스레드" : "플랫폼 스레드", sampler.peak().minus(baseline).describe());
 	}
 
 }

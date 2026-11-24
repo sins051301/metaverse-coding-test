@@ -2,6 +2,8 @@ package com.codingtest.judge;
 
 import com.codingtest.problem.Problem;
 import com.codingtest.problem.TestCase;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
@@ -18,15 +20,29 @@ public class Judge {
 	private static final int TIMEOUT_KILL_EXIT_CODE = 137;
 
 	private final SandboxRunner sandboxRunner;
+	private final MeterRegistry meterRegistry;
 
-	public Judge(SandboxRunner sandboxRunner) {
+	public Judge(SandboxRunner sandboxRunner, MeterRegistry meterRegistry) {
 		this.sandboxRunner = sandboxRunner;
+		this.meterRegistry = meterRegistry;
 	}
 
 	/**
 	 * @param problemTestCases 문제의 전체 테스트 케이스, 예제가 먼저 오는 순서 (TestCaseRepository 가 이 순서로 돌려준다)
 	 */
 	public JudgeResult judge(Problem problem, List<TestCase> problemTestCases, Language language, String sourceCode, JudgeMode mode) {
+		JudgeResult result = runAndClassify(problem, problemTestCases, language, sourceCode, mode);
+		Counter.builder("judge.results")
+				.description("채점이 끝난 제출·실행 수. mode(SUBMIT 제출 / RUN 코드 실행)·언어·최종 판정별")
+				.tag("mode", mode.name())
+				.tag("language", language.name())
+				.tag("verdict", result.verdict().name())
+				.register(meterRegistry)
+				.increment();
+		return result;
+	}
+
+	private JudgeResult runAndClassify(Problem problem, List<TestCase> problemTestCases, Language language, String sourceCode, JudgeMode mode) {
 		List<TestCase> testCases = problemTestCases.stream()
 				.filter(testCase -> mode == JudgeMode.SUBMIT || !testCase.isHidden())
 				.toList();

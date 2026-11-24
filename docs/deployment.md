@@ -19,7 +19,7 @@
        [mysql :3306]  (외부에 포트를 열지 않음)
 ```
 
-- 컨테이너 3개: `caddy`(프론트 정적 파일 + 리버스 프록시 + HTTPS), `backend`(Spring Boot), `mysql`
+- 컨테이너 5개: `caddy`(프론트 정적 파일 + 리버스 프록시 + HTTPS), `backend`(Spring Boot), `mysql`, 모니터링용 `prometheus`·`grafana`(서버 안에서만 접속, 3-5)
 - 외부에 열린 포트는 Caddy 의 80·443 뿐이다. backend 8080, mysql 3306 은 compose 내부 네트워크에서만 보인다.
 - 채점 컨테이너는 backend 가 호스트 Docker 에 요청해 **형제 컨테이너**로 띄운다.
 
@@ -168,6 +168,35 @@ docker compose -p prodcheck -f compose.prod.yaml --env-file <점검용 env> up -
 | `/oauth2/authorization/google` | 302, `redirect_uri=http://localhost/login/oauth2/code/google` (`:8080` 없이 바깥 주소로 만들어짐 → forward-headers 설정 동작) |
 | `/ws` WebSocket 핸드셰이크 | 같은 출처 101, 다른 출처(`Origin: http://evil.example`) 403 |
 | 제출 채점 (문제 1, Java·JavaScript) | 둘 다 `AC 100` (권한 수정 후) |
+
+### 3-5. 모니터링 (Prometheus + Grafana)
+
+```
+backend ── /actuator/prometheus ◀── 5초마다 가져감 ── [prometheus :9090] ◀── 쿼리 ── [grafana :3001] ── 쿼리 ──▶ mysql (읽기 전용 계정)
+```
+
+- **backend**: Micrometer 가 지표를 만들고 Actuator 가 `/actuator/prometheus` 로 내놓는다. Caddy 가 `/actuator` 를 넘기지 않으므로 같은 compose 네트워크의 Prometheus 만 가져갈 수 있다.
+- **prometheus**: 지표를 15일 보관한다 (`prometheus-data` 볼륨). 설정은 `monitoring/prometheus/prometheus.yml`.
+- **grafana**: 데이터 소스(Prometheus, MySQL)와 대시보드 "코딩 테스트 채점"이 파일로 미리 정의돼 있어 띄우면 바로 보인다 (`monitoring/grafana/`). 대시보드는 JSON 이 원본이라 화면에서 고친 내용은 저장되지 않는다. 패널마다 제목 옆 ⓘ 에 "무엇 / 정상 / 이상 신호 / 출처" 설명이 있다.
+- **외부 노출 없음**: 9090, 3001 모두 서버의 `127.0.0.1` 에만 연다. Security List·iptables 에 열 필요가 없다.
+
+**처음 한 번**
+
+1. `.env` 에 `GRAFANA_ADMIN_PASSWORD`, `GRAFANA_MYSQL_PASSWORD` 를 채운다 (`deploy/.env.example`). 영문·숫자만 쓴다(SQL 에 그대로 들어간다): `openssl rand -hex 24`
+2. `docker compose -f compose.prod.yaml --env-file .env up -d` (mysql 은 새 환경 변수 때문에 한 번 다시 만들어진다. 데이터는 볼륨에 그대로 있다)
+3. 이미 데이터가 있는 MySQL 이라 초기화 스크립트가 자동으로 돌지 않으므로, 읽기 전용 계정을 직접 만든다. 같은 명령을 다시 실행하면 비밀번호만 다시 맞춘다
+   ```bash
+   docker compose -f compose.prod.yaml --env-file .env exec mysql sh /docker-entrypoint-initdb.d/create-grafana-reader.sh
+   ```
+
+**보기 (내 PC 에서)**
+
+```bash
+ssh -N -L 3001:127.0.0.1:3001 -L 9090:127.0.0.1:9090 ubuntu@<서버 IP>
+```
+
+터널을 연 채로 브라우저에서 `http://localhost:3001` (admin / `GRAFANA_ADMIN_PASSWORD`). Prometheus 화면은 `http://localhost:9090` → Status → Targets 에서 backend 가 UP 인지 본다.
+로컬 개발(`compose.yaml`)도 같은 설정 파일을 쓴다. `docker compose up -d` 후 백엔드를 `bootRun` 으로 띄우면 `http://localhost:3001` (admin / admin) 에서 같은 대시보드가 보인다.
 
 ## 4. 나중에 확장하는 방법
 

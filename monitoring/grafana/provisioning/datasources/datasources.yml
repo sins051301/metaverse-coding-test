@@ -1,0 +1,23 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 5s
+
+  # 대시보드의 DB 패널용. SELECT 권한만 있는 계정이다 (monitoring/mysql/create-grafana-reader.sh)
+  - name: MySQL
+    uid: mysql
+    type: mysql
+    url: mysql:3306
+    user: grafana_reader
+    jsonData:
+      database: coding_test
+      maxOpenConns: 5
+    secureJsonData:
+      password: ${GRAFANA_MYSQL_PASSWORD}
