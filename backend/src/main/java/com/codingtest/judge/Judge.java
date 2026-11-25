@@ -28,7 +28,7 @@ public class Judge {
 	}
 
 	/**
-	 * @param problemTestCases 문제의 전체 테스트 케이스, 예제가 먼저 오는 순서 (TestCaseRepository 가 이 순서로 돌려준다)
+	 * @param problemTestCases 돌릴 테스트 케이스, 예제가 먼저 오는 순서. 제출은 전체, 실행은 예제만 넘긴다 (히든 테스트 JSON 은 수 MB 라 실행에서는 읽지 않는다)
 	 */
 	public JudgeResult judge(Problem problem, List<TestCase> problemTestCases, Language language, String sourceCode, JudgeMode mode) {
 		JudgeResult result = runAndClassify(problem, problemTestCases, language, sourceCode, mode);

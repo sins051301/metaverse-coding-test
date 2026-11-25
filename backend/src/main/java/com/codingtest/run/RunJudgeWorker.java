@@ -71,7 +71,7 @@ public class RunJudgeWorker {
 
 		try {
 			Problem problem = problemService.getProblem(run.getProblemId());
-			JudgeResult result = judge.judge(problem, problemService.getTestCases(problem.getId()),
+			JudgeResult result = judge.judge(problem, problemService.getExamples(problem.getId()),
 					run.getLanguage(), run.getSourceCode(), JudgeMode.RUN);
 
 			transactionTemplate.executeWithoutResult(status -> {
