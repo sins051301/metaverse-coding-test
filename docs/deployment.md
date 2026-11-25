@@ -146,7 +146,15 @@ docker compose -f compose.prod.yaml --env-file .env up -d --build
 docker compose -f compose.prod.yaml logs -f backend
 ```
 
-- 업데이트: `git pull` 후 같은 명령. 새 Flyway 마이그레이션(새 문제 등)은 backend 시작 때 자동 적용된다.
+- 업데이트는 자동이다. master 에 push 되고 CI 테스트 3개(`backend-test`, `judge-test`, `production-smoke`)가 통과하면 `deploy` job 이 서버에 SSH 로 접속한다. 서버는 `git pull --ff-only` 후 `deploy/deploy.sh`(채점 이미지 빌드 → `compose up -d --build`)를 돌리고, job 은 `https://pixelmogako.store/api/problems` 가 200 을 줄 때까지 최대 3분 기다린다. 새 Flyway 마이그레이션(새 문제 등)은 backend 시작 때 자동 적용된다.
+- `--ff-only` 라서 서버에서 파일을 직접 고쳐 두면 배포가 실패한다. 서버와 git 이 어긋난 상태를 덮어쓰지 않고 드러내려는 것이다. 서버에서 고치지 말고 커밋으로 바꾼다.
+- 배포 키는 서버 `~/.ssh/authorized_keys` 에서 배포 명령만 실행하게 묶여 있다. 키가 새어도 셸은 열리지 않는다.
+  ```
+  restrict,command="cd ~/coding-test && git pull --ff-only && deploy/deploy.sh" ssh-ed25519 AAAA... github-actions-deploy
+  ```
+  GitHub Secrets: `DEPLOY_SSH_KEY`(배포 키 개인키), `DEPLOY_HOST`(`ubuntu@서버 IP`), `DEPLOY_KNOWN_HOSTS`(서버 호스트 키, 가짜 서버 접속 방지). 서버 IP 가 바뀌면 `DEPLOY_HOST`·`DEPLOY_KNOWN_HOSTS` 를 다시 넣는다.
+- `git pull` 을 스크립트 안이 아니라 `authorized_keys` 에서 먼저 하는 이유: bash 는 스크립트를 읽어 가며 실행하므로, 실행 중인 `deploy.sh` 를 pull 로 바꾸면 중간부터 엉뚱한 줄을 읽을 수 있다. pull 이 끝난 뒤 새 스크립트를 처음부터 실행하게 했다.
+- 직접 배포해야 할 때는 서버에서 `cd ~/coding-test && git pull --ff-only && deploy/deploy.sh`.
 - `.env` 는 git 제외 대상이다 (루트 `.gitignore`). backend 이미지에도 `backend/.env` 가 들어가지 않게 `backend/.dockerignore` 에서 뺐다.
 
 ### 3-4. 로컬에서 운영 구성 점검
@@ -239,4 +247,5 @@ ssh -N -L 9090:127.0.0.1:9090 ubuntu@<서버 IP>
 
 ### 4-5. 배포 자동화
 
-- 지금은 SSH 로 접속해 `git pull` + `compose up`. 배포가 잦아지면 GitHub Actions 에서 arm64 이미지를 빌드해 GHCR 에 올리고, 서버는 `docker compose pull` 만 하게 바꾼다. 서버에서 Gradle 빌드를 하지 않아도 되어 배포 시간이 줄어든다.
+- 지금은 GitHub Actions 가 서버에 SSH 로 접속해 서버에서 빌드한다 (3-3). 손으로 하던 절차를 그대로 옮긴 것이라 단순하고, 서버(4 OCPU/24GB)에 빌드 여유가 있다.
+- 배포가 느려 불편해지면 Actions 의 arm64 러너(공개 레포 무료)에서 이미지를 빌드해 GHCR 에 올리고, 서버는 `docker compose pull` + `up -d` 만 하게 바꾼다. 서버에서 Gradle 빌드를 하지 않아 배포가 빨라지고, 이미지 태그로 이전 버전 롤백이 쉬워진다.
