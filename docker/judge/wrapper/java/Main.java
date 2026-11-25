@@ -4,6 +4,9 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
@@ -18,7 +21,9 @@ public class Main {
 
     public static void main(String[] arguments) throws Throwable {
         List<?> jsonArguments = (List<?>) JudgeJson.parse(new String(System.in.readAllBytes(), StandardCharsets.UTF_8));
-        Class<?> solutionClass = Class.forName("Solution");
+        // classpath 에 유저 코드 디렉터리가 있으면 JVM 이 AOT 캐시(java.aot)를 만들지 못해서, 유저 코드는 classpath 밖에서 따로 읽는다.
+        URLClassLoader solutionLoader = new URLClassLoader(new URL[] {Path.of("build").toUri().toURL()});
+        Class<?> solutionClass = Class.forName("Solution", true, solutionLoader);
         Method solutionMethod = findSolutionMethod(solutionClass);
         Class<?>[] parameterTypes = solutionMethod.getParameterTypes();
         Object[] invokeArguments = new Object[parameterTypes.length];
