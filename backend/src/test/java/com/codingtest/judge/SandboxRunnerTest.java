@@ -287,6 +287,7 @@ class SandboxRunnerTest {
 		@Test
 		@DisplayName("네트워크·결과 조작·채점 프로세스 접근·시스템 파일 쓰기·프로세스 무한 생성이 모두 차단된다")
 		void sandboxEscapeAttemptsAreBlocked() {
+			// pids 한도는 프로세스와 그 감시(reaper) 스레드를 함께 세서, 먼저 바닥나는 쪽에 따라 IOException 또는 OutOfMemoryError 가 된다.
 			SandboxResult result = sandboxRunner.run(Language.JAVA, """
 					import java.net.Socket;
 					import java.nio.file.Files;
@@ -304,7 +305,7 @@ class SandboxRunnerTest {
 					        try { Files.writeString(Path.of("/etc/escape"), "x"); System.out.println("ROOTFS:WRITTEN"); }
 					        catch (Exception exception) { System.out.println("ROOTFS:BLOCKED"); }
 					        try { for (int count = 0; count < 1000; count++) new ProcessBuilder("sleep", "100").start(); System.out.println("FORK:UNLIMITED"); }
-					        catch (Exception exception) { System.out.println("FORK:LIMITED"); }
+					        catch (Throwable throwable) { System.out.println("FORK:LIMITED"); }
 					        return 0;
 					    }
 					}

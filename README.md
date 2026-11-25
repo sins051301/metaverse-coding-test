@@ -191,7 +191,8 @@ coding-test/
       ├─ javascript.Dockerfile   → coding-test/judge-javascript (node:26-bookworm-slim)
       ├─ runner.sh               컨테이너 진입점: 컴파일 → 테스트별 실행 → 결과 tar 출력
       ├─ language/               언어별 소스 파일명·컴파일·실행 명령
-      └─ wrapper/                언어별 래퍼 (유저의 solution 을 호출하는 고정 진입점)
+      ├─ wrapper/                언어별 래퍼 (유저의 solution 을 호출하는 고정 진입점)
+      └─ aot-training/           Java AOT 캐시를 만들 때 돌리는 학습용 샘플 코드
 ```
 
 ---
@@ -265,7 +266,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 유저는 `main` 없이 `solution`만 작성하고, `main`은 이미지에 고정된 래퍼가 맡는다 (프로그래머스 방식).
 | 언어 | 래퍼 | 동작 |
 |---|---|---|
-| Java | `Main.java` + `JudgeJson.java` | 리플렉션으로 `Solution.solution`의 파라미터 타입을 읽어 JSON을 변환·호출. `System.out`을 가로채 `userOutput`으로 모음. 외부 라이브러리 없이 자체 JSON 파서 사용 |
+| Java | `Main.java` + `JudgeJson.java` (이미지 빌드 때 `wrapper.jar`로 미리 컴파일) | `build`의 `Solution`을 별도 클래스 로더로 읽고, 리플렉션으로 `Solution.solution`의 파라미터 타입을 읽어 JSON을 변환·호출. `System.out`을 가로채 `userOutput`으로 모음. 외부 라이브러리 없이 자체 JSON 파서 사용 |
 | JavaScript | `main.js` | `vm.compileFunction`으로 `solution.js`를 함수 본문으로 컴파일 → `solution` 꺼내 호출 (`function`/`const` 둘 다 가능). `process.stdout.write`를 가로챔 |
 
 - 지원 타입: int, long, double, boolean, String 과 이들의 배열(int[], long[], String[], int[][] 등 다차원 포함). 그 외 타입은 런타임 에러.
@@ -298,7 +299,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 | `--security-opt no-new-privileges` | 실행 중 권한 재획득 금지 |
 
 문제별 제한은 `problems.time_limit_ms`·`memory_limit_mb`(DB 기본값 3000ms, 265MB)를 `ExecutionLimits(timeLimit, memoryLimitMb)`로 넘긴다. 컨테이너에는 환경변수 `RUN_TIMEOUT`, `MEMORY_LIMIT_MB`로 전달된다.
-힙 크기 = 메모리 제한 − 55MB(런타임 자체 사용분). Java는 `javac`/`java` 모두 `-Xmx<힙>m`(+ `-Xss64m -XX:+UseSerialGC`), JavaScript는 `--max-old-space-size=<힙>`. 힙을 컨테이너 한도보다 낮춰야 커널 강제 종료 대신 언어 차원의 메모리 에러로 끝난다. JS의 "컴파일"은 `node --check` 문법 검사.
+힙 크기 = 메모리 제한 − 55MB(런타임 자체 사용분). Java는 `javac`/`java` 모두 `-Xmx<힙>m -XX:+UseSerialGC`와 AOT 캐시(`-XX:AOTCache`, 아래 "Java 시작 비용 줄이기"), `java`에는 `-Xss64m`도 준다. JavaScript는 `--max-old-space-size=<힙>`. 힙을 컨테이너 한도보다 낮춰야 커널 강제 종료 대신 언어 차원의 메모리 에러로 끝난다. JS의 "컴파일"은 `node --check` 문법 검사.
 
 ### 검증된 동작 (`SandboxRunnerTest`, 22개)
 - 래퍼: 9개 타입 JSON 왕복, 유저 출력 분리, `solution` 없음, 미지원 파라미터·반환 타입 (Java/JS), JS 화살표 함수
@@ -322,6 +323,50 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
   | Docker 호출 (생성/연결/시작/삭제) | 각 0.1~0.2초 | 같음 |
 
   Java 8개 동시 제출 시 1건 6.4초(+20%), 생성 0.2초·시작 0.6초까지 늘어남. `javac`가 컴파일 제한(10초)의 절반 가까이를 쓰므로, 배포 서버에서 다시 측정해 제한을 확인할 것.
+
+### Java 시작 비용 줄이기 (래퍼 미리 컴파일 + AOT 캐시)
+
+**용어**
+- JVM 시작 비용: `javac`도 `java`도 실행할 때마다 JVM이 새로 뜨고, 필요한 클래스를 jar에서 읽어 검증·링크한다. 제출 1건에 `javac` 1번 + 테스트 수만큼 `java`가 뜬다.
+- AOT 캐시(JDK 24+, JEP 483·514·515): 한 번 학습 실행해서 "로드·링크가 끝난 클래스"를 파일로 저장해 두고, 다음 실행부터 그 파일을 메모리에 매핑해 쓴다. `-XX:AOTCacheOutput`으로 만들고 `-XX:AOTCache`로 쓴다.
+
+**이전 동작과 문제**
+- 제출마다 `javac Main.java JudgeJson.java Solution.java`로 바뀌지 않는 래퍼 두 파일까지 컴파일했다.
+- `javac`는 짧은 코드 하나를 컴파일하는데도 클래스 약 2,500개를 읽고, 그중 javac 본체(`jdk.compiler`) 약 1,000개는 JDK 기본 CDS에 없어서 매번 jar에서 읽었다. 운영 부하 테스트에서 채점 1건 4.49초 중 대부분이 이 시작 비용이었다.
+
+**바꾼 것**
+| 대상 | 내용 |
+|---|---|
+| 래퍼 미리 컴파일 | 이미지 빌드 때 `Main`·`JudgeJson`을 `/judge/wrapper/wrapper.jar`로 만든다. 채점 때 `javac`는 `Solution.java`만 컴파일한다 |
+| `javac.aot` | 이미지 빌드 때 `docker/judge/aot-training/Solution.java`를 채점과 같은 명령으로 컴파일해 만든다 (약 25MB) |
+| `java.aot` | 같은 학습 코드를 래퍼로 한 번 실행해 만든다 (약 10MB) |
+| `Main`이 유저 코드를 읽는 방법 | `Class.forName("Solution")` → `build`를 가리키는 `URLClassLoader`. classpath에 비어 있지 않은 디렉터리가 있으면 JVM이 AOT 캐시를 만들지 못해서(`Cannot have non-empty directory in paths`), classpath에는 `wrapper.jar`만 두고 유저 코드는 따로 읽는다 |
+
+- 캐시 적중 확인(`-Xlog:class+load`): `javac`는 2,745개 중 2,733개, `java`는 890개 중 885개가 캐시에서 나온다. 캐시 밖은 유저 코드(`Solution`)와 람다용 숨은 클래스뿐이다.
+- 실행 때 `-Xmx`가 학습 때와 달라도(문제별 메모리 제한) 캐시는 거부되지 않았다. GC는 학습·실행 모두 `-XX:+UseSerialGC`로 맞췄다.
+- AOT 캐시를 쓰면 JVM 시작 스레드가 13개 → 14개가 된다. `--pids-limit 128`은 프로세스와 스레드를 함께 세고 자식 프로세스 하나에 pid 2개(프로세스 + 감시용 `process reaper` 스레드)가 들어서, 한도에 걸리는 지점이 fork(`IOException`)에서 reaper 스레드 생성(`OutOfMemoryError: unable to create native thread`)으로 바뀌었다. 막히는 개수는 55~56개로 같아 격리는 그대로지만, 프로세스를 무한히 만드는 코드의 판정은 RE에서 MLE(stderr의 `OutOfMemoryError`)로 바뀔 수 있다. `SandboxRunnerTest`의 탈출 테스트는 두 형태를 모두 "막힘"으로 본다.
+- `java`에 `-Xlog:disable -Xlog:all=warning:stderr`를 준다. JVM 경고 로그는 기본으로 stdout에 찍혀 래퍼의 결과 JSON 줄과 섞이고, 그러면 백엔드가 결과를 읽지 못한다(위 reaper 스레드 실패 경고로 실제로 발생). AOT 캐시가 거부될 때의 `[warning][aot]` 경고도 모든 제출의 결과를 깨뜨릴 수 있어서 stderr로 보낸다.
+- 유저 코드 실행의 JIT(C1·C2)는 그대로다. C1만 쓰면 오래 도는 유저 코드가 느려져 판정이 바뀔 수 있어서 이번에는 넣지 않았다.
+
+**측정 (2026-11-25, 16코어 노트북 Docker, 문제 1 정답 코드·테스트 10개, `load-test/judge-bench.sh`, 중간값)**
+
+A = 이전, B = 래퍼 미리 컴파일, C = B + AOT 캐시. B는 C에서 `-XX:AOTCache` 옵션만 뺀 이미지라 B→C 차이가 AOT 캐시 효과다.
+
+| 조건 | 단계 | 컨테이너 전체 | `javac` | 테스트 1개 `java` | 테스트 최대 메모리 |
+|---|---|---|---|---|---|
+| 동시 1건 (20회) | A | 4,873ms | 2,622ms | 84ms | 57.8MB |
+| | B | 3,916ms | 1,416ms | 102ms | 58.3MB |
+| | C | **2,372ms (−51%)** | **568ms (−78%)** | 69ms (−18%) | 56.5MB |
+| 동시 4건 (4×5회) | A | 6,626ms | 3,172ms | 130ms | 57.6MB |
+| | B | 5,468ms | 2,534ms | 126ms | 58.3MB |
+| | C | **4,248ms (−36%)** | **1,021ms (−68%)** | 96ms (−26%) | 57.4MB |
+
+- `javac`에서 가장 크게 줄었다. 래퍼 미리 컴파일이 약 절반, AOT 캐시가 나머지 대부분을 줄였다.
+- 테스트 1개 `java`는 B에서 오히려 조금 늘었다(동시 1건 84 → 102ms). jar와 `URLClassLoader`를 쓰느라 기본 CDS에 없는 클래스를 더 읽기 때문으로 보이며, 동시 4건에서는 차이가 없어 잡음 범위다. C에서는 캐시로 A보다 빨라졌다.
+- 메모리는 늘지 않았다. 캐시 파일을 매핑해도 테스트 최대 메모리가 A와 같은 수준이라 MLE 판정 기준은 그대로다.
+- 정답 아닌 실행 0건, `javac` 실패 0건 (A/B/C 모두).
+- C에서 남은 시간: 컨테이너 전체 2,372ms = `javac` 568 + `java` 10번 약 690 + 나머지 약 1,100(컨테이너 생성·시작·삭제, `docker` CLI). 다음으로 줄일 곳은 컨테이너 비용과 테스트마다 뜨는 JVM이다.
+- 노트북 값이라 운영 서버(Oracle A1, 4 OCPU)와 절대값은 다르다. 동시 4건 비율(C/A = 0.64)을 운영의 채점 1건 4.49초에 적용하면 약 2.9초, 처리량은 0.89 → 약 1.4건/초로 예상된다. 운영 k6 측정으로 확인할 것.
 
 ### 비동기 채점 (제출·실행)
 
@@ -557,8 +602,9 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 |---|---|
 | MVP (7단계, 적용함) | 동시 채점 수 제한(세마포어) + 접수 제한(대기열 상한, 유저별 진행 중 개수) + Docker 호출 시간 제한. 위 "부하 제한" |
 | (보류) | 첫 실패에서 중단: 프로그래머스식 전체 실행과 맞지 않아 제거함. 무한 루프 제출은 "시간 제한 × 테스트 수"만큼 걸린다 |
-| 사용자 증가 | 컨테이너 미리 띄워두기(pre-warm, 1회용), JVM CDS/AOT 캐시, 같은 코드 결과 캐시 |
-| 컴파일 단축 (측정 완료, 미적용) | `javac`에 `-J-XX:TieredStopAtLevel=1`(C1 JIT만 사용): 1코어에서 3.2초 → 1.5초. 래퍼를 이미지 빌드 시 미리 컴파일: 약 1초 추가 단축 예상. 유저 코드 실행에도 C1만 쓰는 안은 3초 이하 실행에서 같거나 더 빨랐음(1회 측정) → 반복 측정 후 결정 |
+| 사용자 증가 | 컨테이너 미리 띄워두기(pre-warm, 1회용), 같은 코드 결과 캐시 |
+| 시작 비용 단축 (적용함) | 래퍼 미리 컴파일 + `javac`·`java` AOT 캐시: 노트북 동시 4건에서 채점 1건 6.6초 → 4.2초 (7장 "Java 시작 비용 줄이기"). 운영 k6 측정 전 |
+| 컴파일 단축 (측정 완료, 미적용) | `javac`에 `-J-XX:TieredStopAtLevel=1`(C1 JIT만 사용): 1코어에서 3.2초 → 1.5초 (AOT 캐시 적용 전 측정). 유저 코드 실행에도 C1만 쓰는 안은 3초 이하 실행에서 같거나 더 빨랐음(1회 측정) → 반복 측정 후 결정 |
 | 서버 1대 초과 | 채점 워커 분리 + 메시지 큐(Redis Streams/RabbitMQ) + 오토스케일 |
 | 내 전체 제출 목록을 만들 때 (문제별 내역은 만듦, 위 "제출 내역") | `submissions`에 (`user_id`, `created_at`) 인덱스(전체 내역 최신순), 요약 컬럼 `max_time_ms`·`max_memory_kb`(목록에서 테스트 결과 집계 생략, 기존 데이터는 보관된 테스트 결과로 채움) |
 
@@ -638,7 +684,7 @@ JPA 매핑은 `JsonNodeConverter`로 문자열 ↔ `JsonNode` 변환 (Hibernate 
 | 5 | API: 문제 목록·상세(시작 코드 포함), 코드 실행 + Swagger UI | 완료 |
 | 6 | Google OAuth + JWT, 제출 API(`submissions` 저장·조회) + 실행 기록 저장(`runs`) + 비동기 채점 + 결과 전달(조회 API 또는 STOMP 푸시), `user_solved_problems`/Total Solved, 동시 제출 JUnit 테스트(대기열 없는 상태의 기준 측정) | 완료 (결과 전달은 폴링, STOMP는 실시간 기능 때) |
 | 7 | 동시 채점 수 제한(세마포어) + 접수 제한(대기열 상한·유저별 진행 중 개수) + Docker 호출 시간 제한, 동시 제출 테스트로 6단계 측정값과 비교 (7장 "부하 제한") | 완료 (값은 임시, `docs/tuning.md`) |
-| 8 | 부하 테스트 도구(k6 등, 사전 검토 후) 도입: 실제 서버에 가상 유저로 응답 시간 분포 측정 (배포 전) | 예정 |
+| 8 | 부하 테스트 도구(k6 등, 사전 검토 후) 도입: 실제 서버에 가상 유저로 응답 시간 분포 측정 (배포 전) | 진행 중 (k6 제출 시나리오 `load-test/`, 로컬 검증 완료, 운영 측정 전) |
 | 라운지 1 | 라운지 혼자 걷기: Phaser 지도, 도트 고양이(4방향 걷기·앉기), 충돌, 책상 앞 `[F]` 앉기 → 문제 선택, ESC·[일어나기], 화면을 옮겨도 지도 유지 (10장) | 완료 |
 | 라운지 2 | 여러 명 동기화: STOMP, 접속·퇴장, 위치·상태 방송, 접속자 수, 책상 점유, 게스트 신원 (10장 "2단계") | 완료 (브라우저 탭 두 개로 입장·이동·책상 점유·퇴장 확인) |
 | 라운지 3 | 활동 표시: 타이핑 중(앞발·말풍선), 낮잠 중(z, 노트북 꺼짐), 제출 AC 축하(내 SOLVED!, 남의 별, 전광판, 방금 푼 고양이), 오답 ...(임시), 옆자리 목록, 접힌 띠 (10장 "3단계") | 완료 |
