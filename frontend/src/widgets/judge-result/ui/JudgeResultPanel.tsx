@@ -5,7 +5,6 @@ import type {
   TestResult,
   Verdict,
 } from '@/entities/judge/model/types'
-import type { ProblemParameter } from '@/entities/problem/api/problemQueries'
 import type { JudgeView } from '@/features/judge-code/model/useJudge'
 import { Button } from '@/shared/ui/Button'
 import * as styles from './JudgeResultPanel.css'
@@ -24,7 +23,6 @@ const KILOBYTES_PER_MEGABYTE = 1024
 
 type JudgeResultPanelProps = {
   view: JudgeView
-  parameters: ProblemParameter[]
   timeLimitMs: number
   onRetry: () => void
   onLogin: () => void
@@ -32,7 +30,6 @@ type JudgeResultPanelProps = {
 
 export function JudgeResultPanel({
   view,
-  parameters,
   timeLimitMs,
   onRetry,
   onLogin,
@@ -48,7 +45,6 @@ export function JudgeResultPanel({
       <div className={styles.body} aria-live="polite">
         <ResultBody
           view={view}
-          parameters={parameters}
           timeLimitMs={timeLimitMs}
           onRetry={onRetry}
           onLogin={onLogin}
@@ -60,7 +56,6 @@ export function JudgeResultPanel({
 
 function ResultBody({
   view,
-  parameters,
   timeLimitMs,
   onRetry,
   onLogin,
@@ -98,6 +93,14 @@ function ResultBody({
           onRetry={onRetry}
         />
       )
+    case 'already-judging':
+      return (
+        <RetryNotice
+          headline="이미 채점 중인 코드가 있어요."
+          guide="쓰던 코드는 그대로 있어요. 앞의 채점이 끝난 뒤에 다시 실행해 주세요."
+          onRetry={onRetry}
+        />
+      )
     case 'error':
       return (
         <RetryNotice
@@ -109,11 +112,7 @@ function ResultBody({
       if (view.result.verdict === 'CE')
         return <CompileError compileLog={view.result.compileLog} />
       return view.mode === 'run' ? (
-        <RunCases
-          result={view.result}
-          parameters={parameters}
-          timeLimitMs={timeLimitMs}
-        />
+        <RunCases result={view.result} timeLimitMs={timeLimitMs} />
       ) : (
         <GradeList result={view.result} />
       )
@@ -122,15 +121,17 @@ function ResultBody({
 
 function RetryNotice({
   headline,
+  guide = '쓰던 코드는 그대로 있어요. 잠시 뒤에 다시 실행해 주세요.',
   onRetry,
 }: {
   headline: string
+  guide?: string
   onRetry: () => void
 }) {
   return (
     <div className={styles.notice}>
       <strong className={styles.bad}>{headline}</strong>
-      <p>쓰던 코드는 그대로 있어요. 잠시 뒤에 다시 실행해 주세요.</p>
+      <p>{guide}</p>
       <Button size="small" onClick={onRetry}>
         다시 실행
       </Button>
@@ -151,26 +152,21 @@ function CompileError({ compileLog }: { compileLog: string | null }) {
 
 function RunCases({
   result,
-  parameters,
   timeLimitMs,
 }: {
   result: RunResult
-  parameters: ProblemParameter[]
   timeLimitMs: number
 }) {
   return result.tests.map((test) => (
     <dl key={test.testNumber} className={styles.runCase}>
       <span className={styles.caseName}>테스트 {test.testNumber}</span>
       <dt>입력값</dt>
-      <dd>{formatInput(test.input, parameters)}</dd>
+      <dd>{formatInput(test.input)}</dd>
       <dt>기댓값</dt>
       <dd>{formatValue(test.expected)}</dd>
       <dt>실행 결과</dt>
-      <dd>
-        <span className={test.verdict === 'AC' ? styles.ok : styles.bad}>
-          {runOutcome(test, timeLimitMs)}
-        </span>
-        <span className={styles.cost}>{formatCost(test)}</span>
+      <dd className={test.verdict === 'AC' ? styles.ok : styles.bad}>
+        {runOutcome(test, timeLimitMs)}
       </dd>
       {test.userOutput ? (
         <>
@@ -219,13 +215,9 @@ function GradeList({ result }: { result: SubmissionResult }) {
   )
 }
 
-function formatInput(input: unknown[] | null, parameters: ProblemParameter[]) {
+function formatInput(input: unknown[] | null) {
   if (!input) return ''
-  return parameters
-    .map(
-      (parameter, index) => `${parameter.name} = ${formatValue(input[index])}`,
-    )
-    .join(', ')
+  return input.map(formatValue).join(', ')
 }
 
 function formatCost({ timeMs, memoryKb }: TestResult) {

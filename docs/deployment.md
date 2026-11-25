@@ -19,7 +19,7 @@
        [mysql :3306]  (외부에 포트를 열지 않음)
 ```
 
-- 컨테이너 5개: `caddy`(프론트 정적 파일 + 리버스 프록시 + HTTPS), `backend`(Spring Boot), `mysql`, 모니터링용 `prometheus`·`grafana`(서버 안에서만 접속, 3-5)
+- 컨테이너 5개: `caddy`(프론트 정적 파일 + 리버스 프록시 + HTTPS), `backend`(Spring Boot), `mysql`, 모니터링용 `prometheus`(지표를 모아 Grafana Cloud 로 보냄, 3-5)
 - 외부에 열린 포트는 Caddy 의 80·443 뿐이다. backend 8080, mysql 3306 은 compose 내부 네트워크에서만 보인다.
 - 채점 컨테이너는 backend 가 호스트 Docker 에 요청해 **형제 컨테이너**로 띄운다.
 
@@ -146,7 +146,15 @@ docker compose -f compose.prod.yaml --env-file .env up -d --build
 docker compose -f compose.prod.yaml logs -f backend
 ```
 
-- 업데이트: `git pull` 후 같은 명령. 새 Flyway 마이그레이션(새 문제 등)은 backend 시작 때 자동 적용된다.
+- 업데이트는 자동이다. master 에 push 되고 CI 테스트 3개(`backend-test`, `judge-test`, `production-smoke`)가 통과하면 `deploy` job 이 서버에 SSH 로 접속한다. 서버는 `git pull --ff-only` 후 `deploy/deploy.sh`(채점 이미지 빌드 → `compose up -d --build`)를 돌리고, job 은 `https://pixelmogako.store/api/problems` 가 200 을 줄 때까지 최대 3분 기다린다. 새 Flyway 마이그레이션(새 문제 등)은 backend 시작 때 자동 적용된다.
+- `--ff-only` 라서 서버에서 파일을 직접 고쳐 두면 배포가 실패한다. 서버와 git 이 어긋난 상태를 덮어쓰지 않고 드러내려는 것이다. 서버에서 고치지 말고 커밋으로 바꾼다.
+- 배포 키는 서버 `~/.ssh/authorized_keys` 에서 배포 명령만 실행하게 묶여 있다. 키가 새어도 셸은 열리지 않는다.
+  ```
+  restrict,command="cd ~/coding-test && git pull --ff-only && deploy/deploy.sh" ssh-ed25519 AAAA... github-actions-deploy
+  ```
+  GitHub Secrets: `DEPLOY_SSH_KEY`(배포 키 개인키), `DEPLOY_HOST`(`ubuntu@서버 IP`), `DEPLOY_KNOWN_HOSTS`(서버 호스트 키, 가짜 서버 접속 방지). 서버 IP 가 바뀌면 `DEPLOY_HOST`·`DEPLOY_KNOWN_HOSTS` 를 다시 넣는다.
+- `git pull` 을 스크립트 안이 아니라 `authorized_keys` 에서 먼저 하는 이유: bash 는 스크립트를 읽어 가며 실행하므로, 실행 중인 `deploy.sh` 를 pull 로 바꾸면 중간부터 엉뚱한 줄을 읽을 수 있다. pull 이 끝난 뒤 새 스크립트를 처음부터 실행하게 했다.
+- 직접 배포해야 할 때는 서버에서 `cd ~/coding-test && git pull --ff-only && deploy/deploy.sh`.
 - `.env` 는 git 제외 대상이다 (루트 `.gitignore`). backend 이미지에도 `backend/.env` 가 들어가지 않게 `backend/.dockerignore` 에서 뺐다.
 
 ### 3-4. 로컬에서 운영 구성 점검
@@ -169,34 +177,45 @@ docker compose -p prodcheck -f compose.prod.yaml --env-file <점검용 env> up -
 | `/ws` WebSocket 핸드셰이크 | 같은 출처 101, 다른 출처(`Origin: http://evil.example`) 403 |
 | 제출 채점 (문제 1, Java·JavaScript) | 둘 다 `AC 100` (권한 수정 후) |
 
-### 3-5. 모니터링 (Prometheus + Grafana)
+### 3-5. 모니터링 (Prometheus + Grafana Cloud)
 
 ```
-backend ── /actuator/prometheus ◀── 5초마다 가져감 ── [prometheus :9090] ◀── 쿼리 ── [grafana :3001] ── 쿼리 ──▶ mysql (읽기 전용 계정)
+backend ── /actuator/prometheus ◀── 5초마다 가져감 ── [prometheus :9090] ── remote_write (걸러 낸 약 420개 시계열) ──▶ Grafana Cloud (대시보드·알림)
+                                                                                                   ▲
+https://pixelmogako.store/api/problems ◀── 5분마다 요청 (서울·도쿄) ── Grafana Cloud Synthetic ────┘
 ```
 
 - **backend**: Micrometer 가 지표를 만들고 Actuator 가 `/actuator/prometheus` 로 내놓는다. Caddy 가 `/actuator` 를 넘기지 않으므로 같은 compose 네트워크의 Prometheus 만 가져갈 수 있다.
-- **prometheus**: 지표를 15일 보관한다 (`prometheus-data` 볼륨). 설정은 `monitoring/prometheus/prometheus.yml`.
-- **grafana**: 데이터 소스(Prometheus, MySQL)와 대시보드 "코딩 테스트 채점"이 파일로 미리 정의돼 있어 띄우면 바로 보인다 (`monitoring/grafana/`). 대시보드는 JSON 이 원본이라 화면에서 고친 내용은 저장되지 않는다. 패널마다 제목 옆 ⓘ 에 "무엇 / 정상 / 이상 신호 / 출처" 설명이 있다.
-- **외부 노출 없음**: 9090, 3001 모두 서버의 `127.0.0.1` 에만 연다. Security List·iptables 에 열 필요가 없다.
+- **prometheus**: 지표를 15일 보관한다 (`prometheus-data` 볼륨). 운영 설정은 `compose.prod.yaml` 의 `configs.prometheus-config` 에 있다(로컬은 `monitoring/prometheus/prometheus.yml`).
+- **Grafana Cloud**: 대시보드와 알림은 여기 있다. 서버가 죽어도 그 직전까지의 지표가 남고, 서버가 죽은 것 자체를 알릴 수 있다. 무료 한도(활성 시계열 1만 개, 보존 14일)가 전송 빈도(DPM)까지 세므로, `write_relabel_configs` 로 대시보드가 쓰는 지표만 보낸다. HTTP 응답 시간 히스토그램은 시계열이 가장 많아서 제출·실행 접수(POST) 것만 보낸다.
+- **대시보드**: `monitoring/grafana/dashboards/judge.json` 이 원본이다. 데이터 소스는 대시보드 위쪽의 "데이터 소스" 변수로 고르므로 로컬 Grafana 와 Cloud 에서 같은 파일을 쓴다. 패널마다 제목 옆 ⓘ 에 "무엇 / 정상 / 이상 신호 / 출처" 설명이 있다.
+- **외부 노출 없음**: 9090 은 서버의 `127.0.0.1` 에만 연다. Grafana Cloud 로는 서버가 바깥으로 보내기만 하므로 Security List·iptables 에 열 필요가 없다.
+
+**알림 (Grafana Cloud → Alerts & IRM, 폴더 `coding-test`)**
+
+| 알림 | 조건 | 잡는 상황 |
+|---|---|---|
+| 백엔드 다운 또는 지표 끊김 | `up{job="backend"}` < 1 이거나 데이터 없음이 2분 이어짐 | 백엔드가 계속 죽음(재시작 반복), 서버 전체·Prometheus·네트워크 다운 |
+| 사이트 접속 실패 (서울·도쿄 바깥 확인) | Synthetic 체크 `coding-test-site` 가 두 곳 모두 최근 11분 동안 한 번도 성공 못 함 | 사용자가 실제로 못 쓰는 경우 (Caddy·HTTPS·도메인·DB 포함) |
+
+- 받는 곳은 contact point `coding-test-email` 이다. Cloud 는 조직 멤버의 주소로만 보낼 수 있다(다른 주소는 조직에 초대한 뒤 추가).
+- 2분·두 번 연속은 배포 재시작(약 30초)이나 일시적인 네트워크 문제로 알림이 가지 않게 하려는 값이다. 백엔드는 `restart: unless-stopped` 라 한 번 죽는 정도는 스스로 살아난다.
 
 **처음 한 번**
 
-1. `.env` 에 `GRAFANA_ADMIN_PASSWORD`, `GRAFANA_MYSQL_PASSWORD` 를 채운다 (`deploy/.env.example`). 영문·숫자만 쓴다(SQL 에 그대로 들어간다): `openssl rand -hex 24`
-2. `docker compose -f compose.prod.yaml --env-file .env up -d` (mysql 은 새 환경 변수 때문에 한 번 다시 만들어진다. 데이터는 볼륨에 그대로 있다)
-3. 이미 데이터가 있는 MySQL 이라 초기화 스크립트가 자동으로 돌지 않으므로, 읽기 전용 계정을 직접 만든다. 같은 명령을 다시 실행하면 비밀번호만 다시 맞춘다
-   ```bash
-   docker compose -f compose.prod.yaml --env-file .env exec mysql sh /docker-entrypoint-initdb.d/create-grafana-reader.sh
-   ```
+1. Grafana Cloud 의 Connections → Hosted Prometheus metrics → "From my local Prometheus server" 에서 토큰을 만들고, 나오는 주소·사용자 번호·토큰을 `.env` 의 `GRAFANA_CLOUD_PROMETHEUS_URL`, `GRAFANA_CLOUD_PROMETHEUS_USER`, `GRAFANA_CLOUD_PROMETHEUS_TOKEN` 에 넣는다 (`deploy/.env.example`).
+2. `docker compose -f compose.prod.yaml --env-file .env up -d`
+3. 대시보드는 Cloud 의 Dashboards → New → Import 에 `judge.json` 을 붙여 넣는다 (데이터 소스는 `grafanacloud-…-prom`).
 
-**보기 (내 PC 에서)**
+**보기**
+
+평소에는 Grafana Cloud(`https://<스택>.grafana.net`)의 "코딩 테스트 채점" 대시보드를 본다. Cloud 로 보내지 않은 지표나 5초 원본이 필요하면 내 PC 에서 터널을 열고 `http://localhost:9090` 에서 쿼리한다.
 
 ```bash
-ssh -N -L 3001:127.0.0.1:3001 -L 9090:127.0.0.1:9090 ubuntu@<서버 IP>
+ssh -N -L 9090:127.0.0.1:9090 ubuntu@<서버 IP>
 ```
 
-터널을 연 채로 브라우저에서 `http://localhost:3001` (admin / `GRAFANA_ADMIN_PASSWORD`). Prometheus 화면은 `http://localhost:9090` → Status → Targets 에서 backend 가 UP 인지 본다.
-로컬 개발(`compose.yaml`)도 같은 설정 파일을 쓴다. `docker compose up -d` 후 백엔드를 `bootRun` 으로 띄우면 `http://localhost:3001` (admin / admin) 에서 같은 대시보드가 보인다.
+로컬 개발(`compose.yaml`)은 Prometheus·Grafana 를 둘 다 띄운다. `docker compose up -d` 후 백엔드를 `bootRun` 으로 띄우면 `http://localhost:3001` (admin / admin) 에서 같은 대시보드가 보인다.
 
 ## 4. 나중에 확장하는 방법
 
@@ -228,4 +247,5 @@ ssh -N -L 3001:127.0.0.1:3001 -L 9090:127.0.0.1:9090 ubuntu@<서버 IP>
 
 ### 4-5. 배포 자동화
 
-- 지금은 SSH 로 접속해 `git pull` + `compose up`. 배포가 잦아지면 GitHub Actions 에서 arm64 이미지를 빌드해 GHCR 에 올리고, 서버는 `docker compose pull` 만 하게 바꾼다. 서버에서 Gradle 빌드를 하지 않아도 되어 배포 시간이 줄어든다.
+- 지금은 GitHub Actions 가 서버에 SSH 로 접속해 서버에서 빌드한다 (3-3). 손으로 하던 절차를 그대로 옮긴 것이라 단순하고, 서버(4 OCPU/24GB)에 빌드 여유가 있다.
+- 배포가 느려 불편해지면 Actions 의 arm64 러너(공개 레포 무료)에서 이미지를 빌드해 GHCR 에 올리고, 서버는 `docker compose pull` + `up -d` 만 하게 바꾼다. 서버에서 Gradle 빌드를 하지 않아 배포가 빨라지고, 이미지 태그로 이전 버전 롤백이 쉬워진다.

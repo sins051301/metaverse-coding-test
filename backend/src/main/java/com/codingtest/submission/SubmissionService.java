@@ -43,7 +43,7 @@ public class SubmissionService {
 	 * 커밋 전이면 아직 다른 연결에서 보이지 않아(트랜잭션 격리) "그런 제출이 없다"가 될 수 있다.
 	 * 또 저장이 실패해 롤백되면 채점도 시작되지 않아야 한다.
 	 *
-	 * <p>저장 전에 접수 제한(유저별 진행 중 개수, 대기열 상한)을 넘으면 429 로 거절한다 (JudgeAdmission).
+	 * <p>저장 전에 접수 제한(유저별 진행 중 개수, 대기열 상한)을 넘으면 409·429 로 거절한다 (JudgeAdmission).
 	 */
 	@Transactional
 	public Submission submit(long userId, long problemId, SourceCodeRequest request) {

@@ -241,7 +241,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 | POST | `/api/auth/logout` | 로그아웃. 만료된 쿠키로 덮어써 지운다(HttpOnly라 프론트가 직접 못 지움). `204` |
 
 에러는 표준 형식(RFC 9457 `ProblemDetail`): 없는 문제 404, 빈 코드·64K자 초과·지원하지 않는 언어 400. 로그인이 필요한 API에 토큰이 없거나 틀리면 401 (Google 로그인 화면으로 보내지 않음).
-채점이 밀리면 429: 내 끝나지 않은 제출·실행이 이미 2건이거나, 전체 대기가 50건일 때. 동시에 채점하는 수는 4건으로 제한하고 나머지는 `PENDING`으로 차례를 기다린다. 비동기 채점의 동작은 7장 "비동기 채점", 제한의 동작과 이유는 7장 "부하 제한".
+내 끝나지 않은 제출·실행이 이미 1건 있으면 409, 전체 대기가 50건이면 429. 동시에 채점하는 수는 4건으로 제한하고 나머지는 `PENDING`으로 차례를 기다린다. 비동기 채점의 동작은 7장 "비동기 채점", 제한의 동작과 이유는 7장 "부하 제한".
 
 ### 운영 배포
 
@@ -376,7 +376,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 
 | 겹 | 막는 것 | 코드 | 넘으면 |
 |---|---|---|---|
-| ① 접수 제한 | 한 유저의 연타, 끝없이 길어지는 대기 | `JudgeAdmission` | 429, 저장하지 않음 |
+| ① 접수 제한 | 한 유저의 연타, 끝없이 길어지는 대기 | `JudgeAdmission` | 409(내 채점 진행 중)·429(대기열 포화), 저장하지 않음 |
 | ② 동시 채점 수 제한 | 한꺼번에 뜨는 컨테이너 수 | `JudgeSlots` (세마포어) | `PENDING`인 채로 차례를 기다림 |
 | ③ Docker 호출 시간 제한 | 멈춘 Docker 때문에 채점 자리가 영영 안 돌아오는 것 | `DockerClientConfiguration`, `SandboxRunner` | 예외 → `FAILED`, 자리 반납 |
 
@@ -386,7 +386,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 3. A·B는 허가증을 받고 `JUDGING`으로 바꾼 뒤 컨테이너를 띄운다. C는 허가증이 없어 **`PENDING`인 채로 그 자리에서 기다린다**(스레드가 멈춰 있지만 가상 스레드라 OS 스레드는 놓아준다).
 4. A가 끝나면 `finally`에서 허가증을 돌려준다 → 기다리던 C가 받아 `JUDGING`이 된다.
 5. 화면은 폴링으로 C의 상태를 보므로 "대기 중(PENDING) → 채점 중(JUDGING) → 완료(DONE)"를 구분해 보여 줄 수 있다.
-6. 그 사이 A가 또 제출하고 실행까지 눌러 A의 끝나지 않은 건이 2개가 되면, 세 번째 요청은 ①에서 `429 "채점이 끝나지 않은 제출·실행이 이미 2건 있습니다"`.
+6. 그 사이 A가 다른 탭에서 또 제출하거나 실행을 누르면, A의 끝나지 않은 건이 이미 1개라 ①에서 `409 "채점이 끝나지 않은 제출·실행이 이미 1건 있습니다"`. 화면은 "이미 채점 중인 코드가 있어요"를 보여 준다.
 
 #### 공부할 개념
 
@@ -411,7 +411,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 - 세마포어는 "동시에 채점하는 수"만 제한하고 "기다리는 수"는 제한하지 않는다. 대기가 1000건 쌓이면 맨 뒤는 수십 분을 기다린다. 오래 기다리게 하느니 접수할 때 "지금은 붐빈다"를 바로 알려 주는 편이 낫다(빠른 실패, fail fast).
 - 429 Too Many Requests: "요청이 너무 많다"는 HTTP 표준 상태 코드. 503(서버가 일을 못 함)과 달리 "잠시 뒤 다시 하면 된다"는 뜻이다.
 - **대기열 상한 계산**: 허용 대기 시간 ÷ 1건 채점 시간 × 동시 채점 수. 60초 ÷ 5.3초(Java) × 4 ≈ 45 → 50건. 리틀의 법칙(Little's Law: 대기 수 = 도착률 × 대기 시간)을 거꾸로 쓴 것과 같은 생각이다.
-- **유저별 진행 중 개수 제한** vs **빈도 제한(rate limit)**: 빈도 제한은 "1분에 10번"처럼 시간 창을 센다(토큰 버킷, 슬라이딩 윈도우 같은 알고리즘이 필요). 여기서 막고 싶은 건 "한 사람이 대기열을 독차지하는 것"이라, 그 유저의 끝나지 않은 건수(K=2)를 세는 쪽이 목적에 바로 맞고 DB 개수 조회 한 번이면 된다. 결과를 보고 고쳐서 다시 내는 정상 사용자는 막히지 않는다.
+- **유저별 진행 중 개수 제한** vs **빈도 제한(rate limit)**: 빈도 제한은 "1분에 10번"처럼 시간 창을 센다(토큰 버킷, 슬라이딩 윈도우 같은 알고리즘이 필요). 여기서 막고 싶은 건 "한 사람이 대기열을 독차지하는 것"이라, 그 유저의 끝나지 않은 건수(K=1)를 세는 쪽이 목적에 바로 맞고 DB 개수 조회 한 번이면 된다. 결과를 보고 고쳐서 다시 내는 정상 사용자는 막히지 않는다.
 
 **5. check-then-act 경쟁 (알고 남겨 둔 한계)**
 - `JudgeAdmission`은 "개수 세기(check) → 저장(act)"을 두 단계로 한다. 같은 유저의 요청 두 개가 거의 동시에 오면 둘 다 "지금 1건"을 읽고 둘 다 저장해 3건이 될 수 있다.
@@ -499,9 +499,9 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 - 백엔드: Micrometer 가 지표를 만들고 Actuator 가 `/actuator/prometheus` 로 내놓는다 (`/actuator/health` 와 함께 인증 없이 허용. 운영에서는 Caddy 가 `/actuator` 를 넘기지 않아 외부에서 닿지 않는다).
 - 채점 전용 지표: `judge_slots_waiting`(대기 수), `judge_slots_in_use`·`judge_slots_capacity`(채점 중·최대), `judge_slot_wait_seconds`·`judge_slot_run_seconds`(자리 대기·채점 시간 히스토그램, p95 계산용), `judge_results_total{mode, language, verdict}`, `judge_failures_total{mode}`. 라벨에는 종류가 정해진 값만 쓴다(제출 id 같은 값을 넣으면 시계열이 무한히 늘어난다).
 - Spring 자동 지표: JVM 힙·스레드, HikariCP 커넥션, HTTP 응답 시간(히스토그램 켬), CPU.
-- Prometheus 가 5초마다 가져가 저장하고, Grafana 대시보드 "코딩 테스트 채점"(`monitoring/grafana/dashboards/judge.json`)이 채점·API·서버 자원·DB 를 보여 준다. 패널마다 ⓘ 에 "무엇 / 정상 / 이상 신호 / 출처" 설명이 있다. DB 패널은 SELECT 권한만 있는 `grafana_reader` 계정으로 MySQL 을 직접 조회한다.
-- 로컬은 `docker compose up -d` 후 `http://localhost:3001`, 운영은 SSH 터널로 본다 ([`docs/deployment.md`](docs/deployment.md) 3-5).
-- `JudgeApiTest#limitsUnfinishedJudgingPerUser`: 끝나지 않은 건 2개면 세 번째는 429, 끝나면 다시 받는다.
+- Prometheus 가 5초마다 가져가 저장하고, Grafana 대시보드 "코딩 테스트 채점"(`monitoring/grafana/dashboards/judge.json`)이 채점·API·서버 자원을 보여 준다. 패널마다 ⓘ 에 "무엇 / 정상 / 이상 신호 / 출처" 설명이 있다.
+- 로컬은 `docker compose up -d` 후 `http://localhost:3001`. 운영은 서버 Prometheus 가 대시보드에 쓰는 지표만 Grafana Cloud 로 보내고(remote_write), 대시보드와 서버 다운·사이트 접속 실패 메일 알림은 Cloud 에 있다 ([`docs/deployment.md`](docs/deployment.md) 3-5).
+- `JudgeApiTest#limitsUnfinishedJudgingPerUser`: 끝나지 않은 건이 1개면 다음 제출·실행은 409, 끝나면 다시 받는다.
 - `JudgeApiTest#rejectsWhenQueueIsFull`: 전체 `PENDING`이 50건이면 처음 제출하는 유저도 429.
 - `DockerClientTimeoutTest` (Docker 불필요): **멈춘 Docker 엔진 흉내** — 테스트 안에서 `ServerSocket`을 열어 연결은 받아 주되 응답을 한 바이트도 보내지 않는 가짜 서버를 만들고, Docker 클라이언트를 그 주소(`tcp://127.0.0.1:<포트>`)로 연결한다. 응답 시간 제한 1초를 걸면 `createContainerCmd`가 약 1초 뒤 예외로 끝나는지 본다. 시간 제한이 동작하지 않으면 테스트가 멈추므로 테스트 자체에도 10초 상한(`assertTimeoutPreemptively`)을 걸었다. 응답 시간 제한을 1시간으로 바꾸면 이 상한에 걸려 실패하는 것도 확인했다(테스트가 정말 시간 제한을 잡아내는지 거꾸로 검증).
   - 이를 위해 `DockerClientConfiguration#create`가 접속 주소를 인자로 받게 나눴다. 원래는 환경 변수(`DOCKER_HOST`)에서만 읽어 테스트가 가짜 주소를 넣을 수 없었다.

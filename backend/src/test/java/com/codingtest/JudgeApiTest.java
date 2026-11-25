@@ -123,7 +123,9 @@ class JudgeApiTest {
 	void hidesOtherUsersRecords() {
 		JudgeApiClient owner = newUser();
 		JudgeApiClient other = newUser();
+		// 한 유저는 끝나지 않은 건을 1개만 걸 수 있어서 제출이 끝난 뒤에 실행을 건다.
 		long submissionId = owner.accept("submissions", 1, "JAVASCRIPT", ACCEPTED_JAVASCRIPT);
+		owner.awaitDone("submissions", submissionId);
 		long runId = owner.accept("runs", 1, "JAVASCRIPT", ACCEPTED_JAVASCRIPT);
 
 		assertThat(other.getRaw("submissions", submissionId)).hasStatus(HttpStatus.NOT_FOUND);
@@ -131,7 +133,6 @@ class JudgeApiTest {
 		assertThat(mockMvc.get().uri("/api/submissions/{id}", submissionId)).hasStatus(HttpStatus.UNAUTHORIZED);
 
 		// 뒤에서 도는 채점이 다음 테스트와 겹치지 않도록 끝날 때까지 기다린다.
-		owner.awaitDone("submissions", submissionId);
 		owner.awaitDone("runs", runId);
 	}
 
@@ -146,17 +147,16 @@ class JudgeApiTest {
 	}
 
 	@Test
-	@DisplayName("끝나지 않은 제출·실행이 이미 2건이면 3번째는 429 로 거절하고, 앞의 것이 끝나면 다시 받는다")
+	@DisplayName("끝나지 않은 제출·실행이 이미 1건이면 다음 제출·실행은 409 로 거절하고, 앞의 것이 끝나면 다시 받는다")
 	void limitsUnfinishedJudgingPerUser() {
 		JudgeApiClient user = newUser();
-		// Java 는 javac 때문에 5초 안팎이 걸려서, 아래 세 번째 요청을 보낼 때까지 앞의 두 건이 끝나지 않는다.
+		// Java 는 javac 때문에 5초 안팎이 걸려서, 아래 요청들을 보낼 때까지 앞의 한 건이 끝나지 않는다.
 		long submissionId = user.accept("submissions", 1, "JAVA", ACCEPTED_JAVA);
-		long runId = user.accept("runs", 1, "JAVA", ACCEPTED_JAVA);
 
-		assertThat(user.post("submissions", 1, "JAVASCRIPT", ACCEPTED_JAVASCRIPT)).hasStatus(HttpStatus.TOO_MANY_REQUESTS);
+		assertThat(user.post("runs", 1, "JAVASCRIPT", ACCEPTED_JAVASCRIPT)).hasStatus(HttpStatus.CONFLICT);
+		assertThat(user.post("submissions", 1, "JAVASCRIPT", ACCEPTED_JAVASCRIPT)).hasStatus(HttpStatus.CONFLICT);
 
 		user.awaitDone("submissions", submissionId);
-		user.awaitDone("runs", runId);
 		user.awaitDone("runs", user.accept("runs", 1, "JAVASCRIPT", ACCEPTED_JAVASCRIPT));
 	}
 

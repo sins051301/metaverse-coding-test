@@ -20,6 +20,7 @@ export type JudgeView =
   | { phase: 'judging'; mode: JudgeMode }
   | { phase: 'login-required'; mode: JudgeMode }
   | { phase: 'busy'; mode: JudgeMode }
+  | { phase: 'already-judging'; mode: JudgeMode }
   | { phase: 'error'; mode: JudgeMode }
   | { phase: 'done'; mode: 'run'; result: RunResult }
   | { phase: 'done'; mode: 'submit'; result: SubmissionResult }
@@ -71,6 +72,8 @@ export function useJudge(problemId: number) {
     if (accept.isError) {
       if (isHttpError(accept.error, 401))
         return { phase: 'login-required', mode }
+      if (isHttpError(accept.error, 409))
+        return { phase: 'already-judging', mode }
       if (isHttpError(accept.error, 429)) return { phase: 'busy', mode }
       return { phase: 'error', mode }
     }
