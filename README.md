@@ -299,7 +299,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 | `--security-opt no-new-privileges` | 실행 중 권한 재획득 금지 |
 
 문제별 제한은 `problems.time_limit_ms`·`memory_limit_mb`(DB 기본값 3000ms, 265MB)를 `ExecutionLimits(timeLimit, memoryLimitMb)`로 넘긴다. 컨테이너에는 환경변수 `RUN_TIMEOUT`, `MEMORY_LIMIT_MB`로 전달된다.
-힙 크기 = 메모리 제한 − 55MB(런타임 자체 사용분). Java는 `javac`/`java` 모두 `-Xmx<힙>m -XX:+UseSerialGC`와 AOT 캐시(`-XX:AOTCache`, 아래 "Java 시작 비용 줄이기"), `javac`에는 `-XX:TieredStopAtLevel=1`(C1 JIT만 사용, 아래 "javac는 C1 JIT만"), `java`에는 `-Xss64m`도 준다. JavaScript는 `--max-old-space-size=<힙>`. 힙을 컨테이너 한도보다 낮춰야 커널 강제 종료 대신 언어 차원의 메모리 에러로 끝난다. JS의 "컴파일"은 `node --check` 문법 검사.
+힙 크기 = 메모리 제한 − 55MB(런타임 자체 사용분). Java는 `javac`/`java` 모두 `-Xmx<힙>m -XX:+UseSerialGC`와 AOT 캐시(`-XX:AOTCache`, 아래 "Java 시작 비용 줄이기"), `java`에는 `-Xss64m`도 준다. JIT는 `javac`·`java` 모두 기본(C1 → C2)이다 (아래 "C1 JIT만 쓰기: 검토 후 되돌림"). JavaScript는 `--max-old-space-size=<힙>`. 힙을 컨테이너 한도보다 낮춰야 커널 강제 종료 대신 언어 차원의 메모리 에러로 끝난다. JS의 "컴파일"은 `node --check` 문법 검사.
 
 ### 검증된 동작 (`SandboxRunnerTest`, 22개)
 - 래퍼: 9개 타입 JSON 왕복, 유저 출력 분리, `solution` 없음, 미지원 파라미터·반환 타입 (Java/JS), JS 화살표 함수
@@ -346,7 +346,7 @@ Google OAuth 클라이언트의 승인된 리디렉션 URI: `http://localhost:80
 - 실행 때 `-Xmx`가 학습 때와 달라도(문제별 메모리 제한) 캐시는 거부되지 않았다. GC는 학습·실행 모두 `-XX:+UseSerialGC`로 맞췄다.
 - AOT 캐시를 쓰면 JVM 시작 스레드가 13개 → 14개가 된다. `--pids-limit 128`은 프로세스와 스레드를 함께 세고 자식 프로세스 하나에 pid 2개(프로세스 + 감시용 `process reaper` 스레드)가 들어서, 한도에 걸리는 지점이 fork(`IOException`)에서 reaper 스레드 생성(`OutOfMemoryError: unable to create native thread`)으로 바뀌었다. 막히는 개수는 55~56개로 같아 격리는 그대로지만, 프로세스를 무한히 만드는 코드의 판정은 RE에서 MLE(stderr의 `OutOfMemoryError`)로 바뀔 수 있다. `SandboxRunnerTest`의 탈출 테스트는 두 형태를 모두 "막힘"으로 본다.
 - `java`에 `-Xlog:disable -Xlog:all=warning:stderr`를 준다. JVM 경고 로그는 기본으로 stdout에 찍혀 래퍼의 결과 JSON 줄과 섞이고, 그러면 백엔드가 결과를 읽지 못한다(위 reaper 스레드 실패 경고로 실제로 발생). AOT 캐시가 거부될 때의 `[warning][aot]` 경고도 모든 제출의 결과를 깨뜨릴 수 있어서 stderr로 보낸다.
-- 유저 코드 실행의 JIT(C1·C2)는 그대로다. 아래 "javac는 C1 JIT만"에서 측정했다.
+- JIT(C1·C2)는 `javac`·`java` 모두 그대로다. C1만 쓰는 안은 아래 "C1 JIT만 쓰기: 검토 후 되돌림"에서 측정했다.
 
 **측정 (2026-11-25, 16코어 노트북 Docker, 문제 1 정답 코드·테스트 10개, `load-test/judge-bench.sh`, 중간값)**
 
@@ -383,7 +383,9 @@ A = 이전, B = 래퍼 미리 컴파일, C = B + AOT 캐시. B는 C에서 `-XX:A
 - 운영 서버(arm64)에서 빌드한 캐시도 적중률이 같다 (`javac` 2,733/2,745, `java` 885/890, 경고 없음).
 - 465건 모두 AC. 기록은 `load-test/README.md` 측정 기록.
 
-### javac는 C1 JIT만 (유저 코드 실행은 C1·C2 그대로)
+### C1 JIT만 쓰기: 검토 후 되돌림
+
+**결론**: `javac`에 C1만 쓰는 안은 운영에 한 번 배포했다가(PR #9, #12) 효과가 작아 되돌렸다. 유저 코드 실행에는 처음부터 넣지 않았다.
 
 **용어**
 - C1·C2: HotSpot의 두 JIT 컴파일러. C1은 빨리 컴파일하고 덜 최적화하며, C2는 오래 걸려 강하게 최적화한다. 기본은 인터프리터 → C1 → C2 순서로 올라간다.
@@ -400,8 +402,20 @@ A = 이전, B = 래퍼 미리 컴파일, C = B + AOT 캐시. B는 C에서 `-XX:A
 | `javac` | 71K자 소스, 5회 | 3,199~5,937ms | **1,446~1,891ms** |
 | 컨테이너 전체 | 동시 1건 / 4건 | 2,706 / 2,983ms | **2,292 / 2,691ms** |
 
-- 큰 소스일수록 효과가 크다. 이전 설정에서는 71K자 소스가 1코어에서 최대 5.9초 걸려, 동시 채점이 겹치면 컴파일 제한(10초)에 가까워질 수 있었다.
-- `javac`는 판정에 쓰는 측정이 없어서(CE 여부와 10초 제한뿐) 채점 기준이 바뀌지 않는다. `judgeTest` 135개 통과, AOT 캐시 적중률 같음.
+**운영 측정 (2026-11-25, Oracle A1 Neoverse-N1, 1코어 컨테이너)**
+
+| 대상 | C1·C2 | C1만 |
+|---|---|---|
+| `javac` 문제 1 정답 (7회) | 약 500ms | 약 375ms (−25%) |
+| `javac` 71K자 소스 (5회) | 약 2,060ms | 약 1,060ms (−48%) |
+| k6 VU 60 처리량 | 1.65건/초 | 1.69건/초 (+2.5%) |
+| k6 VU 60 채점 1건 평균 / p95 | 2.43 / 2.78초 | 2.37 / 3.07초 |
+| k6 VU 60 CPU | 91% | 87% |
+
+- 운영 CPU에서는 원래 `javac`가 노트북보다 빨라, 줄어든 시간이 노트북(−356ms)의 약 3분의 1(−125ms)이었다. 노트북 비율로 한 예상(처리량 약 1.9건/초)은 빗나갔다.
+- 효과가 큰 71K자 소스는 API 상한 근처의 극단적인 경우라 실제 풀이(수백~수천 자)를 대표하지 않는다.
+- 판정 기준은 바뀌지 않지만(`javac`는 CE 여부와 10초 제한뿐), 일반적인 제출에서 얻는 것이 처리량 +2.5%뿐이라 설정을 단순하게 두려고 되돌렸다.
+- 이제 채점 1건(약 2.4초)에서 `javac`는 약 0.5초, 테스트 10개 `java`는 약 0.6초이고, 나머지 약 1.3초가 컨테이너 생성·시작·삭제다. 다음에 줄일 곳은 컨테이너 비용이다.
 
 **유저 코드 실행에는 넣지 않는다.** 계산량을 늘린 코드 5유형을 테스트마다 새 JVM으로 3회씩 돌린 중간값:
 
@@ -653,7 +667,7 @@ A = 이전, B = 래퍼 미리 컴파일, C = B + AOT 캐시. B는 C에서 `-XX:A
 | (보류) | 첫 실패에서 중단: 프로그래머스식 전체 실행과 맞지 않아 제거함. 무한 루프 제출은 "시간 제한 × 테스트 수"만큼 걸린다 |
 | 사용자 증가 | 컨테이너 미리 띄워두기(pre-warm, 1회용), 같은 코드 결과 캐시 |
 | 시작 비용 단축 (적용함) | 래퍼 미리 컴파일 + `javac`·`java` AOT 캐시: 운영 k6(VU 60)에서 채점 1건 4.25초 → 2.43초, 처리량 0.94 → 1.65건/초 (7장 "Java 시작 비용 줄이기") |
-| 컴파일 단축 (적용함) | `javac`에 `-J-XX:TieredStopAtLevel=1`(C1 JIT만 사용): AOT 캐시 위에서 720ms → 364ms. 유저 코드 실행에는 시간 제한 근처 코드가 TLE로 바뀌어 넣지 않음 (7장 "javac는 C1 JIT만") |
+| 컴파일 단축 (검토 후 되돌림) | `javac`에 `-J-XX:TieredStopAtLevel=1`(C1 JIT만 사용): 운영에서 `javac` 500 → 375ms, 처리량 +2.5%뿐이라 되돌림. 유저 코드 실행에는 시간 제한 근처 코드가 TLE로 바뀌어 넣지 않음 (7장 "C1 JIT만 쓰기: 검토 후 되돌림") |
 | 서버 1대 초과 | 채점 워커 분리 + 메시지 큐(Redis Streams/RabbitMQ) + 오토스케일 |
 | 내 전체 제출 목록을 만들 때 (문제별 내역은 만듦, 위 "제출 내역") | `submissions`에 (`user_id`, `created_at`) 인덱스(전체 내역 최신순), 요약 컬럼 `max_time_ms`·`max_memory_kb`(목록에서 테스트 결과 집계 생략, 기존 데이터는 보관된 테스트 결과로 채움) |
 
