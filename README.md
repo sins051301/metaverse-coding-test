@@ -594,6 +594,7 @@ A = 이전, B = 래퍼 미리 컴파일, C = B + AOT 캐시. B는 C에서 `-XX:A
 - 채점 전용 지표: `judge_slots_waiting`(대기 수), `judge_slots_in_use`·`judge_slots_capacity`(채점 중·최대), `judge_slot_wait_seconds`·`judge_slot_run_seconds`(자리 대기·채점 시간 히스토그램, p95 계산용), `judge_results_total{mode, language, verdict}`, `judge_failures_total{mode}`. 라벨에는 종류가 정해진 값만 쓴다(제출 id 같은 값을 넣으면 시계열이 무한히 늘어난다).
 - Spring 자동 지표: JVM 힙·스레드, HikariCP 커넥션, HTTP 응답 시간(히스토그램 켬), CPU.
 - Prometheus 가 5초마다 가져가 저장하고, Grafana 대시보드 "코딩 테스트 채점"(`monitoring/grafana/dashboards/judge.json`)이 채점·API·서버 자원을 보여 준다. 패널마다 ⓘ 에 "무엇 / 정상 / 이상 신호 / 출처" 설명이 있다.
+- 맨 아래 접힌 줄 "운영 추세 (최근 14일, 하루 단위)" 는 하루 채점 수, 대기 시간 p95(하루 전체 / 가장 붐빈 5분), 429 거절 비율, 언어별 TLE·MLE 비율, 채점 시간 p50·p95 를 하루 한 막대로 보여 준다. 증설할 때가 됐는지, 배포가 채점을 느리게 하거나 판정을 바꾸지 않았는지 보는 용도다 ([`docs/deployment.md`](docs/deployment.md) 3-5 "운영 추세").
 - 로컬은 `docker compose up -d` 후 `http://localhost:3001`. 운영은 서버 Prometheus 가 대시보드에 쓰는 지표만 Grafana Cloud 로 보내고(remote_write), 대시보드와 서버 다운·사이트 접속 실패 메일 알림은 Cloud 에 있다 ([`docs/deployment.md`](docs/deployment.md) 3-5).
 - `JudgeApiTest#limitsUnfinishedJudgingPerUser`: 끝나지 않은 건이 1개면 다음 제출·실행은 409, 끝나면 다시 받는다.
 - `JudgeApiTest#rejectsWhenQueueIsFull`: 전체 `PENDING`이 50건이면 처음 제출하는 유저도 429.

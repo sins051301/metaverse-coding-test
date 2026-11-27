@@ -201,6 +201,25 @@ https://pixelmogako.store/api/problems ◀── 5분마다 요청 (서울·도�
 - 받는 곳은 contact point `coding-test-email` 이다. Cloud 는 조직 멤버의 주소로만 보낼 수 있다(다른 주소는 조직에 초대한 뒤 추가).
 - 2분·두 번 연속은 배포 재시작(약 30초)이나 일시적인 네트워크 문제로 알림이 가지 않게 하려는 값이다. 백엔드는 `restart: unless-stopped` 라 한 번 죽는 정도는 스스로 살아난다.
 
+**운영 추세 (대시보드 맨 아래 접힌 줄 "운영 추세 (최근 14일, 하루 단위)")**
+
+위쪽 줄들은 지금 이 순간(최근 5분)을 본다. 이 줄은 최근 14일을 하루 한 막대로 보여 주어, 사용량이 늘어 증설할 때가 됐는지와 배포가 채점을 망가뜨리지 않았는지를 본다. 지표는 이미 Cloud 로 보내던 것만 써서 `write_relabel_configs` 는 바꾸지 않았다.
+
+| 패널 | 쿼리 (요약) | 왜 보나 |
+|---|---|---|
+| 하루 채점 수 (언어 · 제출/실행별) | `increase(judge_results_total[1d])` | 사용량 추세. 운영 측정 처리량(약 1.65건/초)과 비교해 증설·동시 채점 수 조정 시점을 정한다 |
+| 자리 대기 시간 p95 (하루 전체 / 가장 붐빈 5분) | `judge_slot_wait_seconds_bucket` 의 1일 p95, 5분 p95 의 하루 최댓값 | 평균이 괜찮아도 몰리는 시간에 느려지는지 본다. 가장 붐빈 5분이 60초에 다가가면 대기열 상한의 목표가 깨지기 직전 |
+| 접수 거절(429) 비율 | 429 ÷ 전체 제출·실행 접수(POST) | 처리 능력이 모자라 돌려보낸 사용자가 있었는지. 대기열 상한을 바꿀 근거이자 바꾼 뒤 확인 값. 유저별 제한(409)은 포함하지 않는다 |
+| 제출의 TLE·MLE 비율 (언어별) | `judge_results_total{mode="SUBMIT", verdict=~"TLE\|MLE"}` ÷ 전체 제출 | 채점 환경 변경으로 정상 코드가 초과 판정되는 회귀를 잡는다 (예: 유저 코드를 C1 JIT 로만 돌리면 TLE, README 7장) |
+| 채점 시간 (하루 p50 / p95) | `judge_slot_run_seconds_bucket` 의 1일 p50·p95 | 최적화 효과 유지 확인 (예: AOT 캐시가 빠지면 Java 1건 약 2.4초 → 4.2초) |
+
+- 막대 하나는 그 시각까지의 24시간이다. Grafana 가 하루 간격을 UTC 0시(한국 오전 9시)에 맞추므로 하루 경계도 그 시각이다.
+- 대시보드 시간 범위와 상관없이 항상 14일을 본다(패널의 `timeFrom: 14d`, `interval: 1d`). 14일은 Cloud 무료 보존 기간이라 그 이상은 볼 수 없다. 로컬 Prometheus 는 7일만 보관한다.
+- 대시보드가 5초마다 새로 고치는데 14일 쿼리는 무거워서 줄을 접어 두었다. 접힌 줄은 펼치기 전까지 쿼리하지 않는다.
+- 하루 채점 수는 `increase()` 로 세서 근사값이다. 백엔드가 재시작한 날은 언어·판정 조합마다 1건씩 적게 셀 수 있다(카운터가 첫 채점 때 생겨 첫 값이 0이 아닌 1로 잡힌다). 정확한 건수가 필요하면 DB 의 `submission` 테이블을 센다.
+- 채점 시간에는 언어 라벨이 없어 Java·JavaScript 비율만 바뀌어도 값이 움직인다. 하루 채점 수의 언어 비율과 같이 본다.
+- `judge.json` 을 고치면 Cloud 에는 자동으로 반영되지 않는다. Dashboards → "코딩 테스트 채점" → Settings → JSON Model 에 새 내용을 붙여 넣거나, Import 에서 같은 uid 로 덮어쓴다.
+
 **처음 한 번**
 
 1. Grafana Cloud 의 Connections → Hosted Prometheus metrics → "From my local Prometheus server" 에서 토큰을 만들고, 나오는 주소·사용자 번호·토큰을 `.env` 의 `GRAFANA_CLOUD_PROMETHEUS_URL`, `GRAFANA_CLOUD_PROMETHEUS_USER`, `GRAFANA_CLOUD_PROMETHEUS_TOKEN` 에 넣는다 (`deploy/.env.example`).
