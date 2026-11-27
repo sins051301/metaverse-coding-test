@@ -14,6 +14,7 @@
 | Docker 응답 시간 제한 | `judge.docker.response-timeout` | 2분 | 가장 긴 컨테이너 시간(컴파일 10초 + 3초 × 테스트 11개 + 여유 15초 = 58초)보다 길어야 한다. 그 2배 | 테스트 수가 많거나 시간 제한이 긴 문제를 추가하면 다시 계산 (`SandboxRunner#containerTimeout`) | 문제 추가 시 |
 | attach 연결 시간 제한 | `SandboxRunner.ATTACH_TIMEOUT` | 10초 | 평소 0.1~0.2초 | 배포 서버 측정값 | 배포 시 |
 | 컨테이너 여유 시간 | `SandboxRunner.CONTAINER_OVERHEAD` | 15초 | Docker 생성·시작 지연, 동시 실행 시 느려짐(0.6초까지 관찰) | 배포 서버 측정값 | 배포 시 |
+| JDBC 배치 크기 | `spring.jpa.properties.hibernate.jdbc.batch_size` | 50 | 채점 결과는 테스트 수만큼 행을 넣는다. 한 문제의 테스트가 지금 최대 35개라 결과 저장이 배치 하나(INSERT 한 문장)에 들어가게 | 테스트가 50개를 넘는 문제를 추가하면 배치가 둘로 나뉜다(동작은 같고 왕복이 1번 는다) | 문제 추가 시 |
 
 ### 라운지 (README 10장)
 
